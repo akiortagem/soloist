@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppRoute } from "../state/appStore";
+import { useEffect } from "react";
 import {
-  createRepositories,
-  type SessionRecord,
-} from "../persistence/sessionRepository";
+  appStore,
+  type AppRoute,
+  useAppStore,
+} from "../state/appStore";
 
 const routeLabels: Record<AppRoute, string> = {
   sessions: "Sessions",
@@ -12,80 +12,23 @@ const routeLabels: Record<AppRoute, string> = {
 };
 
 export function App() {
-  const [route, setRoute] = useState<AppRoute>("sessions");
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>();
-  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [persistenceMessage, setPersistenceMessage] = useState(
-    "Opening local database...",
-  );
-  const [persistenceError, setPersistenceError] = useState<string>();
-
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0],
-    [activeSessionId, sessions],
-  );
-
-  const loadSessions = useCallback(async () => {
-    setPersistenceError(undefined);
-
-    try {
-      const repositories = await createRepositories();
-      const persistedSessions = await repositories.sessions.list();
-
-      setSessions(persistedSessions);
-      setActiveSessionId((currentId) => {
-        if (currentId && persistedSessions.some((session) => session.id === currentId)) {
-          return currentId;
-        }
-
-        return persistedSessions[0]?.id;
-      });
-      setPersistenceMessage(
-        persistedSessions.length > 0
-          ? `Read ${persistedSessions.length} session${
-              persistedSessions.length === 1 ? "" : "s"
-            } from SQLite.`
-          : "SQLite ready. Create a smoke test session.",
-      );
-    } catch (error) {
-      setPersistenceError(error instanceof Error ? error.message : String(error));
-      setPersistenceMessage("SQLite unavailable.");
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  }, []);
+  const {
+    activeCharacterSheet,
+    activeDocument,
+    activeSession,
+    chaosFactor,
+    combatState,
+    isCreatingSession,
+    isLoadingSessions,
+    persistenceError,
+    persistenceMessage,
+    route,
+    sessions,
+  } = useAppStore();
 
   useEffect(() => {
-    void loadSessions();
-  }, [loadSessions]);
-
-  const createSmokeSession = async () => {
-    setIsCreatingSession(true);
-    setPersistenceError(undefined);
-
-    try {
-      const repositories = await createRepositories();
-      const createdSession = await repositories.sessions.create({
-        name: `Smoke Session ${new Date().toLocaleTimeString()}`,
-      });
-      const readSession = await repositories.sessions.get(createdSession.id);
-
-      await loadSessions();
-      setActiveSessionId(createdSession.id);
-      setPersistenceMessage(
-        readSession
-          ? `Inserted and read ${readSession.name}.`
-          : "Inserted a session, but read-back returned no row.",
-      );
-    } catch (error) {
-      setPersistenceError(error instanceof Error ? error.message : String(error));
-      setPersistenceMessage("SQLite smoke test failed.");
-    } finally {
-      setIsCreatingSession(false);
-    }
-  };
+    void appStore.loadSessions();
+  }, []);
 
   return (
     <main className="app-shell">
@@ -107,7 +50,7 @@ export function App() {
               <button
                 className={route === routeKey ? "active" : ""}
                 key={routeKey}
-                onClick={() => setRoute(routeKey)}
+                onClick={() => appStore.setRoute(routeKey)}
                 type="button"
               >
                 {routeLabels[routeKey]}
@@ -128,7 +71,7 @@ export function App() {
                 <button
                   className={session.id === activeSession?.id ? "selected" : ""}
                   key={session.id}
-                  onClick={() => setActiveSessionId(session.id)}
+                  onClick={() => void appStore.selectSession(session.id)}
                   type="button"
                 >
                   <span>{session.name}</span>
@@ -144,7 +87,7 @@ export function App() {
             <span>{routeLabels[route]}</span>
             <button
               disabled={isCreatingSession}
-              onClick={createSmokeSession}
+              onClick={() => void appStore.createSession()}
               type="button"
             >
               {isCreatingSession ? "Creating..." : "New Session"}
@@ -152,12 +95,12 @@ export function App() {
           </div>
 
           <article className="editor-placeholder">
-            <p className="kicker">SQLite smoke test</p>
+            <p className="kicker">SQLite workspace</p>
             <h2>{activeSession?.name ?? "No persisted session selected"}</h2>
             <p>
-              This screen loads sessions from the local SQLite database. Use New
-              Session to insert a row and immediately read it back through the
-              TypeScript repository.
+              {activeDocument
+                ? `${activeDocument.title} is loaded from the session document.`
+                : "Create a session to start a document."}
             </p>
             <pre>{persistenceMessage}</pre>
             {persistenceError && <p className="error-state">{persistenceError}</p>}
@@ -167,12 +110,20 @@ export function App() {
         <aside className="right-panel" aria-label="Session tools">
           <section>
             <h2>Character Sheets</h2>
-            <p>No sheets yet. This panel will list freeform session characters.</p>
+            <p>
+              {activeCharacterSheet
+                ? activeCharacterSheet.name
+                : "No active sheet for this session."}
+            </p>
           </section>
 
           <section>
             <h2>Combat Tracker</h2>
-            <p>Manual initiative and status controls will appear here.</p>
+            <p>
+              {combatState?.active
+                ? `${combatState.combatants.length} combatants`
+                : "No active combat."}
+            </p>
           </section>
 
           <section>
@@ -184,7 +135,7 @@ export function App() {
               </div>
               <div>
                 <dt>Chaos Factor</dt>
-                <dd>{activeSession?.chaosFactor ?? 5}</dd>
+                <dd>{chaosFactor}</dd>
               </div>
             </dl>
           </section>

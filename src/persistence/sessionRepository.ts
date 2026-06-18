@@ -5,16 +5,9 @@ import { getDatabase } from "./database";
 import { DocumentRepository } from "./documentRepository";
 import { createId, nowIso } from "./id";
 import { SettingsRepository } from "./settingsRepository";
+import type { Session } from "../domain/domainTypes";
 
-export type SessionRecord = {
-  id: string;
-  name: string;
-  documentId: string;
-  chaosFactor: number;
-  activeCharacterSheetId?: string;
-  createdAt: string;
-  updatedAt: string;
-};
+export type SessionRecord = Session;
 
 type SessionRow = {
   id: string;
@@ -61,6 +54,46 @@ export class SessionRepository {
     );
 
     return rows[0] ? mapSession(rows[0]) : null;
+  }
+
+  async update(input: {
+    id: string;
+    name?: string;
+    chaosFactor?: number;
+    activeCharacterSheetId?: string;
+  }) {
+    const current = await this.get(input.id);
+
+    if (!current) {
+      return null;
+    }
+
+    const updated: SessionRecord = {
+      ...current,
+      name: input.name ?? current.name,
+      chaosFactor: input.chaosFactor ?? current.chaosFactor,
+      activeCharacterSheetId:
+        input.activeCharacterSheetId ?? current.activeCharacterSheetId,
+      updatedAt: nowIso(),
+    };
+
+    await this.db.execute(
+      `UPDATE sessions
+       SET name = $1,
+           chaos_factor = $2,
+           active_character_sheet_id = $3,
+           updated_at = $4
+       WHERE id = $5`,
+      [
+        updated.name,
+        updated.chaosFactor,
+        updated.activeCharacterSheetId ?? null,
+        updated.updatedAt,
+        updated.id,
+      ],
+    );
+
+    return updated;
   }
 
   async create(input: { name: string; chaosFactor?: number }) {
