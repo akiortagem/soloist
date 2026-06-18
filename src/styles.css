@@ -1,0 +1,237 @@
+@import "./base.css";
+
+.app-shell {
+  display: grid;
+  grid-template-rows: 72px minmax(0, 1fr);
+  height: 100vh;
+}
+
+.top-bar {
+  align-items: center;
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-strong);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.top-bar h1,
+.top-bar p {
+  margin: 0;
+}
+
+.top-bar h1 {
+  font-size: 1.25rem;
+}
+
+.top-bar p {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  margin-top: 4px;
+}
+
+.session-status {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+}
+
+.session-status strong {
+  color: var(--color-success);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(420px, 1fr) 300px;
+  min-height: 0;
+}
+
+.left-sidebar,
+.right-panel {
+  background: var(--color-surface);
+  overflow: auto;
+  padding: 20px;
+}
+
+.left-sidebar {
+  border-right: 1px solid var(--color-border);
+}
+
+.right-panel {
+  border-left: 1px solid var(--color-border);
+}
+
+nav {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+nav button,
+.session-list button,
+.editor-toolbar button {
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+nav button:hover,
+.session-list button:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+nav button.active,
+.session-list button.selected,
+.editor-toolbar button {
+  background: var(--color-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+  color: var(--color-text-strong);
+}
+
+.left-sidebar h2,
+.right-panel h2 {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.session-list button {
+  display: grid;
+  gap: 4px;
+}
+
+.session-list small {
+  color: var(--color-text-subtle);
+}
+
+.empty-state {
+  color: var(--color-text-subtle);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.editor-area {
+  background: var(--color-bg);
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.editor-toolbar {
+  align-items: center;
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.editor-toolbar span {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.editor-toolbar button:hover {
+  background: var(--color-accent-soft);
+}
+
+.editor-placeholder {
+  margin: 0 auto;
+  max-width: 780px;
+  padding: 56px 48px;
+  width: 100%;
+}
+
+.editor-placeholder .kicker {
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.editor-placeholder h2 {
+  color: var(--color-text-strong);
+  font-size: 2rem;
+  margin: 0 0 16px;
+}
+
+.editor-placeholder p {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0 0 24px;
+}
+
+.editor-placeholder pre {
+  background: var(--color-code-bg);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  color: var(--color-text);
+  margin: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.editor-placeholder .error-state {
+  color: #ffb4b4;
+  margin-top: 16px;
+}
+
+.right-panel {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.right-panel section {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 20px;
+}
+
+.right-panel section:last-child {
+  border-bottom: 0;
+}
+
+.right-panel p {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+dt {
+  color: var(--color-text-muted);
+}
+
+dd {
+  color: var(--color-text-strong);
+  font-weight: 700;
+  margin: 0;
+}

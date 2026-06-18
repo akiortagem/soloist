@@ -1,0 +1,58 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Soloist",
+  "version": "0.1.0",
+  "identifier": "com.soloist.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 820,
+        "minHeight": 640,
+        "minWidth": 900,
+        "resizable": true,
+        "title": "Soloist",
+        "width": 1200
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "copyright": "",
+    "externalBin": [],
+    "icon": ["icons/icon.png"],
+    "longDescription": "A local-first solo TRPG markdown writing app.",
+    "resources": [],
+    "shortDescription": "Solo TRPG markdown workspace",
+    "targets": ["nsis"],
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser",
+        "languages": ["English"]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:soloist.db"]
+    }
+  }
+}

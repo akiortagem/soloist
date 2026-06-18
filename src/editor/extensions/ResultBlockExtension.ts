@@ -1,0 +1,1 @@
+export const ResultBlockExtension = null;
