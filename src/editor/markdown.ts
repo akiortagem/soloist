@@ -1,4 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
+import type { ResultBlock } from "../domain/domainTypes";
 
 type TextMark = "bold" | "italic";
 
@@ -71,6 +72,51 @@ function bulletListNode(items: string[]): JSONContent {
   };
 }
 
+function resultBlockNode(block: ResultBlock): JSONContent {
+  return {
+    type: "resultBlock",
+    attrs: { block },
+  };
+}
+
+function isResultBlockType(type: string): type is ResultBlock["type"] {
+  return (
+    type === "roll" ||
+    type === "oracle" ||
+    type === "scene" ||
+    type === "combat" ||
+    type === "stat" ||
+    type === "chaos" ||
+    type === "error"
+  );
+}
+
+function parseResultBlockFence(type: string, body: string): ResultBlock | null {
+  if (!isResultBlockType(type)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(body) as Partial<ResultBlock>;
+
+    if (parsed.type && parsed.type !== type) {
+      return null;
+    }
+
+    return {
+      id: String(parsed.id ?? `${type}_unknown`),
+      type,
+      createdAt: String(parsed.createdAt ?? new Date(0).toISOString()),
+      commandText: String(parsed.commandText ?? ""),
+      collapsed:
+        typeof parsed.collapsed === "boolean" ? parsed.collapsed : undefined,
+      payload: parsed.payload ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function markdownToTiptapJson(markdown: string): JSONContent {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const content: JSONContent[] = [];
@@ -95,9 +141,45 @@ export function markdownToTiptapJson(markdown: string): JSONContent {
     bulletItems = [];
   }
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
     const headingMatch = /^(#{1,6})\s+(.+)$/.exec(line);
     const bulletMatch = /^\s*[-*+]\s+(.+)$/.exec(line);
+    const resultFenceMatch = /^:::trpg-(roll|oracle|scene|combat|stat|chaos|error)\s*$/.exec(
+      line,
+    );
+
+    if (resultFenceMatch) {
+      flushParagraph();
+      flushBullets();
+
+      const bodyLines: string[] = [];
+      let closed = false;
+
+      while (lineIndex + 1 < lines.length) {
+        lineIndex += 1;
+        const nextLine = lines[lineIndex];
+
+        if (nextLine.trim() === ":::") {
+          closed = true;
+          break;
+        }
+
+        bodyLines.push(nextLine);
+      }
+
+      const block = closed
+        ? parseResultBlockFence(resultFenceMatch[1], bodyLines.join("\n"))
+        : null;
+
+      if (block) {
+        content.push(resultBlockNode(block));
+      } else {
+        paragraphLines.push(line, ...bodyLines);
+      }
+
+      continue;
+    }
 
     if (line.trim() === "") {
       flushParagraph();
@@ -172,6 +254,16 @@ function serializeBlock(node: JSONContent): string {
 
     case "paragraph":
       return serializeInline(node.content);
+
+    case "resultBlock": {
+      const block = node.attrs?.block as ResultBlock | undefined;
+
+      if (!block || !isResultBlockType(block.type)) {
+        return "";
+      }
+
+      return [`:::trpg-${block.type}`, JSON.stringify(block), ":::"].join("\n");
+    }
 
     default:
       return serializeInline(node.content);

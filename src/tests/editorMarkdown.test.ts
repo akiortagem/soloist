@@ -29,4 +29,36 @@ describe("editor markdown persistence", () => {
       content: [{ type: "paragraph" }],
     });
   });
+
+  it("round-trips result blocks as fenced custom blocks", () => {
+    const block = {
+      id: "oracle_test",
+      type: "oracle",
+      createdAt: "2026-06-19T00:00:00.000Z",
+      commandText: "/ask likely Is the guard asleep?",
+      collapsed: true,
+      payload: {
+        question: "Is the guard asleep?",
+        odds: "likely",
+        answer: "Yes",
+      },
+    };
+    const markdown = [
+      "Before",
+      "",
+      ":::trpg-oracle",
+      JSON.stringify(block),
+      ":::",
+      "",
+      "After",
+    ].join("\n");
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content?.[1]).toEqual({
+      type: "resultBlock",
+      attrs: { block },
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
 });

@@ -75,7 +75,8 @@ nav {
 
 nav button,
 .session-list button,
-.editor-toolbar button {
+.editor-toolbar button,
+.result-block-collapse {
   background: transparent;
   color: var(--color-text-muted);
   padding: 10px 12px;
@@ -249,6 +250,52 @@ nav button.active,
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+.result-block {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  margin: 16px 0;
+  padding: 14px 16px;
+}
+
+.result-block.is-selected {
+  box-shadow: var(--shadow-focus);
+}
+
+.result-block strong {
+  color: var(--color-text-strong);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-block span,
+.result-block code {
+  color: var(--color-text);
+}
+
+.result-block code {
+  background: var(--color-code-bg);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.result-block-collapse {
+  justify-self: start;
+  padding: 4px 8px;
+}
+
+.result-block-collapse:hover {
+  background: var(--color-accent-soft);
+}
+
+.result-block-error {
+  border-left-color: #ef8f8f;
 }
 
 .right-panel {
