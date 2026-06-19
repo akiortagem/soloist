@@ -298,6 +298,26 @@ nav button.active,
   border-left-color: #ef8f8f;
 }
 
+.result-block-oracle {
+  border-left-color: #79d28c;
+}
+
+.result-block-oracle:has(.result-block-oracle-answer[data-answer="no"]) {
+  border-left-color: #ef8f8f;
+}
+
+.result-block-oracle-answer {
+  border-radius: 6px;
+  color: #0f5132;
+  font-weight: 700;
+  justify-self: start;
+  padding: 2px 8px;
+}
+
+.result-block-oracle-answer[data-answer="no"] {
+  color: #842029;
+}
+
 .result-block-inline.result-block-roll {
   align-items: center;
   border-left-width: 1px;

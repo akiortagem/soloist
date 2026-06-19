@@ -84,11 +84,84 @@ describe("command parser foundation", () => {
     });
   });
 
-  it("identifies ask commands as unknown for now", () => {
-    expect(parseCommand("/ask likely Is the guard asleep?")).toMatchObject({
-      type: "unknown",
+  it("parses /ask with default odds", () => {
+    expect(parseCommand("/ask Is the door locked?")).toEqual({
+      type: "ask",
+      raw: "/ask Is the door locked?",
+      odds: "50_50",
+      question: "Is the door locked?",
+    });
+  });
+
+  it("parses /ask with one-word odds aliases", () => {
+    expect(parseCommand("/ask likely Is the guard asleep?")).toEqual({
+      type: "ask",
       raw: "/ask likely Is the guard asleep?",
+      odds: "likely",
+      question: "Is the guard asleep?",
+    });
+    expect(parseCommand("/ask unlikely Is the merchant lying?")).toEqual({
+      type: "ask",
+      raw: "/ask unlikely Is the merchant lying?",
+      odds: "unlikely",
+      question: "Is the merchant lying?",
+    });
+    expect(parseCommand("/ask very_likely Is the town nearby?")).toEqual({
+      type: "ask",
+      raw: "/ask very_likely Is the town nearby?",
+      odds: "very_likely",
+      question: "Is the town nearby?",
+    });
+    expect(parseCommand("/ask 50/50 Is someone watching me?")).toEqual({
+      type: "ask",
+      raw: "/ask 50/50 Is someone watching me?",
+      odds: "50_50",
+      question: "Is someone watching me?",
+    });
+  });
+
+  it("parses /ask with two-word odds aliases", () => {
+    expect(parseCommand("/ask very likely Is the town nearby?")).toEqual({
+      type: "ask",
+      raw: "/ask very likely Is the town nearby?",
+      odds: "very_likely",
+      question: "Is the town nearby?",
+    });
+    expect(parseCommand("/ask no way Is this safe?")).toEqual({
+      type: "ask",
+      raw: "/ask no way Is this safe?",
+      odds: "no_way",
+      question: "Is this safe?",
+    });
+    expect(parseCommand("/ask near sure Is the tavern open?")).toEqual({
+      type: "ask",
+      raw: "/ask near sure Is the tavern open?",
+      odds: "near_sure",
+      question: "Is the tavern open?",
+    });
+  });
+
+  it("parses /ask quoted whole questions", () => {
+    expect(parseCommand('/ask "Is the guildmaster hiding something?"')).toEqual({
+      type: "ask",
+      raw: '/ask "Is the guildmaster hiding something?"',
+      odds: "50_50",
+      question: "Is the guildmaster hiding something?",
+    });
+  });
+
+  it("returns invalid when /ask is missing a question", () => {
+    expect(parseCommand("/ask likely")).toEqual({
+      type: "invalid",
+      raw: "/ask likely",
       commandName: "ask",
+      reason: "Missing yes/no question",
+    });
+    expect(parseCommand("/ask")).toEqual({
+      type: "invalid",
+      raw: "/ask",
+      commandName: "ask",
+      reason: "Missing yes/no question",
     });
   });
 

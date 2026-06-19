@@ -1,10 +1,12 @@
 import type {
+  ParsedAskCommand,
   ParsedInvalidCommand,
   ParsedRollCommand,
   ParsedUnknownCommand,
 } from "../../commands/commandTypes";
 import type { ResultBlock } from "../../domain/domainTypes";
 import { rollDice } from "../../dice/rollDice";
+import { getActiveOracleProvider } from "../../oracle/oracleRegistry";
 
 export type ResultBlockType = ResultBlock["type"];
 
@@ -79,5 +81,22 @@ export function createRollCommandResultBlock(command: ParsedRollCommand): Result
       total: rolled.value.total,
       terms: rolled.value.terms,
     },
+  });
+}
+
+export function createAskCommandResultBlock(command: ParsedAskCommand): ResultBlock {
+  const oracle = getActiveOracleProvider();
+  const roll = Math.floor(Math.random() * 100) + 1;
+  const result = oracle.askYesNo({
+    question: command.question,
+    odds: command.odds,
+    d100: roll,
+    chaosFactor: 5,
+  });
+
+  return createResultBlock("oracle", {
+    commandText: command.raw,
+    collapsed: true,
+    payload: result,
   });
 }

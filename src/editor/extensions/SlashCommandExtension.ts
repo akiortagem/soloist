@@ -4,6 +4,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { parseCommand } from "../../commands/parseCommand";
 import type { ResultBlock } from "../../domain/domainTypes";
 import {
+  createAskCommandResultBlock,
   createInvalidCommandResultBlock,
   createRollCommandResultBlock,
   createUnknownCommandResultBlock,
@@ -13,6 +14,8 @@ function createCommandResultBlock(commandText: string): ResultBlock {
   const parsed = parseCommand(commandText);
 
   switch (parsed.type) {
+    case "ask":
+      return createAskCommandResultBlock(parsed);
     case "roll":
       return createRollCommandResultBlock(parsed);
     case "invalid":

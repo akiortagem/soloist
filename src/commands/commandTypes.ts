@@ -1,3 +1,7 @@
+import type { OracleOdds } from "../oracle/oracleTypes";
+
+export type { OracleOdds };
+
 export type ParsedRollCommand = {
   type: "roll";
   raw: string;
@@ -6,7 +10,8 @@ export type ParsedRollCommand = {
 
 export type ParsedAskCommand = {
   type: "ask";
-  odds: string;
+  raw: string;
+  odds: OracleOdds;
   question: string;
 };
 
