@@ -2,6 +2,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 import { appStore, useAppStore } from "../state/appStore";
+import { InlineResultBlockExtension } from "./extensions/InlineResultBlockExtension";
 import { ResultBlockExtension } from "./extensions/ResultBlockExtension";
 import { SlashCommandExtension } from "./extensions/SlashCommandExtension";
 import { markdownToTiptapJson, tiptapJsonToMarkdown } from "./markdown";
@@ -65,7 +66,12 @@ function SessionDocumentEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, ResultBlockExtension, SlashCommandExtension],
+    extensions: [
+      StarterKit,
+      ResultBlockExtension,
+      InlineResultBlockExtension,
+      SlashCommandExtension,
+    ],
     content: markdownToTiptapJson(initialMarkdown),
     editorProps: {
       attributes: {

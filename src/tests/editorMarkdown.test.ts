@@ -61,4 +61,33 @@ describe("editor markdown persistence", () => {
     });
     expect(tiptapJsonToMarkdown(json)).toBe(markdown);
   });
+
+  it("round-trips inline roll result blocks", () => {
+    const block = {
+      id: "roll_test",
+      type: "roll",
+      createdAt: "2026-06-19T00:00:00.000Z",
+      commandText: "/roll d20",
+      payload: {
+        formula: "d20",
+        total: 12,
+        terms: [],
+      },
+    };
+    const markdown = `Attack {{trpg-roll:${encodeURIComponent(
+      JSON.stringify(block),
+    )}}} damage`;
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Attack " },
+        { type: "inlineResultBlock", attrs: { block } },
+        { type: "text", text: " damage" },
+      ],
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
 });

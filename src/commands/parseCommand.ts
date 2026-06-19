@@ -20,7 +20,24 @@ export function parseCommand(raw: string): ParsedCommand {
     };
   }
 
-  const { commandName } = extractCommandName(trimmed);
+  const { commandName, argsText } = extractCommandName(trimmed);
+
+  if (commandName === "roll") {
+    if (argsText.length === 0) {
+      return {
+        type: "invalid",
+        raw,
+        commandName,
+        reason: "Missing dice formula",
+      };
+    }
+
+    return {
+      type: "roll",
+      raw,
+      formula: argsText,
+    };
+  }
 
   return {
     type: "unknown",

@@ -1,5 +1,6 @@
 export type ParsedRollCommand = {
   type: "roll";
+  raw: string;
   formula: string;
 };
 
@@ -37,6 +38,13 @@ export type ParsedUnknownCommand = {
   reason: string;
 };
 
+export type ParsedInvalidCommand = {
+  type: "invalid";
+  raw: string;
+  commandName: string;
+  reason: string;
+};
+
 export type ParsedCommand =
   | ParsedRollCommand
   | ParsedAskCommand
@@ -44,4 +52,5 @@ export type ParsedCommand =
   | ParsedCombatCommand
   | ParsedStatCommand
   | ParsedChaosCommand
+  | ParsedInvalidCommand
   | ParsedUnknownCommand;

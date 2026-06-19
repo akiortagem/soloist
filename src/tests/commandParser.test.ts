@@ -26,12 +26,61 @@ describe("command parser foundation", () => {
     });
   });
 
-  it("identifies roll commands as unknown for now", () => {
+  it("parses /roll 1d20", () => {
+    expect(parseCommand("/roll 1d20")).toEqual({
+      type: "roll",
+      raw: "/roll 1d20",
+      formula: "1d20",
+    });
+  });
+
+  it("parses /roll d20", () => {
+    expect(parseCommand("/roll d20")).toEqual({
+      type: "roll",
+      raw: "/roll d20",
+      formula: "d20",
+    });
+  });
+
+  it("parses /roll 1d20+3", () => {
     expect(parseCommand("/roll 1d20+3")).toEqual({
-      type: "unknown",
+      type: "roll",
       raw: "/roll 1d20+3",
+      formula: "1d20+3",
+    });
+  });
+
+  it("parses /roll 2d6 - 1", () => {
+    expect(parseCommand("/roll 2d6 - 1")).toEqual({
+      type: "roll",
+      raw: "/roll 2d6 - 1",
+      formula: "2d6 - 1",
+    });
+  });
+
+  it("parses /roll 1d20 + 1d4 + 2", () => {
+    expect(parseCommand("/roll 1d20 + 1d4 + 2")).toEqual({
+      type: "roll",
+      raw: "/roll 1d20 + 1d4 + 2",
+      formula: "1d20 + 1d4 + 2",
+    });
+  });
+
+  it("returns invalid when /roll is missing a formula", () => {
+    expect(parseCommand("/roll")).toEqual({
+      type: "invalid",
+      raw: "/roll",
       commandName: "roll",
-      reason: "Command parser not implemented yet",
+      reason: "Missing dice formula",
+    });
+  });
+
+  it("returns invalid when /roll only has trailing whitespace", () => {
+    expect(parseCommand("/roll    ")).toEqual({
+      type: "invalid",
+      raw: "/roll    ",
+      commandName: "roll",
+      reason: "Missing dice formula",
     });
   });
 

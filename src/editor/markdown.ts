@@ -16,9 +16,42 @@ function textNode(text: string, marks: TextMark[] = []): JSONContent {
   };
 }
 
+function encodeInlineResultBlock(block: ResultBlock): string {
+  return encodeURIComponent(JSON.stringify(block));
+}
+
+function decodeInlineResultBlock(encoded: string): ResultBlock | null {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(encoded)) as Partial<ResultBlock>;
+
+    if (parsed.type !== "roll") {
+      return null;
+    }
+
+    return {
+      id: String(parsed.id ?? "roll_unknown"),
+      type: "roll",
+      createdAt: String(parsed.createdAt ?? new Date(0).toISOString()),
+      commandText: String(parsed.commandText ?? ""),
+      collapsed:
+        typeof parsed.collapsed === "boolean" ? parsed.collapsed : undefined,
+      payload: parsed.payload ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+function inlineResultBlockNode(block: ResultBlock): JSONContent {
+  return {
+    type: "inlineResultBlock",
+    attrs: { block },
+  };
+}
+
 function parseInlineMarkdown(markdown: string): JSONContent[] {
   const nodes: JSONContent[] = [];
-  const tokenPattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  const tokenPattern = /(\{\{trpg-roll:[^}]+\}\}|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
@@ -28,7 +61,16 @@ function parseInlineMarkdown(markdown: string): JSONContent[] {
     }
 
     const token = match[0];
-    if (token.startsWith("**") || token.startsWith("__")) {
+    if (token.startsWith("{{trpg-roll:")) {
+      const encoded = token.slice("{{trpg-roll:".length, -2);
+      const block = decodeInlineResultBlock(encoded);
+
+      if (block) {
+        nodes.push(inlineResultBlockNode(block));
+      } else {
+        nodes.push(textNode(token));
+      }
+    } else if (token.startsWith("**") || token.startsWith("__")) {
       nodes.push(textNode(token.slice(2, -2), ["bold"]));
     } else {
       nodes.push(textNode(token.slice(1, -1), ["italic"]));
@@ -223,6 +265,16 @@ function serializeInline(content: JSONContent[] = []): string {
     .map((node) => {
       if (node.type === "text") {
         return serializeTextNode(node);
+      }
+
+      if (node.type === "inlineResultBlock") {
+        const block = node.attrs?.block as ResultBlock | undefined;
+
+        if (!block || block.type !== "roll") {
+          return "";
+        }
+
+        return `{{trpg-roll:${encodeInlineResultBlock(block)}}}`;
       }
 
       if (node.type === "hardBreak") {

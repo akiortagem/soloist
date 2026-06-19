@@ -30,7 +30,9 @@ export function ResultBlockView({
   const className = [
     "result-block",
     `result-block-${block.type}`,
+    node.type.name === "inlineResultBlock" ? "result-block-inline" : "",
     selected ? "is-selected" : "",
+    block.collapsed ? "is-collapsed" : "is-expanded",
   ]
     .filter(Boolean)
     .join(" ");
@@ -41,7 +43,7 @@ export function ResultBlockView({
 
   return (
     <NodeViewWrapper
-      as="section"
+      as={node.type.name === "inlineResultBlock" ? "span" : "section"}
       className={className}
       data-result-block-id={block.id}
       data-result-block-type={block.type}

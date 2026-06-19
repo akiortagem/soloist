@@ -298,6 +298,68 @@ nav button.active,
   border-left-color: #ef8f8f;
 }
 
+.result-block-inline.result-block-roll {
+  align-items: center;
+  border-left-width: 1px;
+  display: inline-flex;
+  gap: 10px;
+  line-height: 1.2;
+  margin: 0 4px;
+  max-width: 100%;
+  padding: 4px 8px;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.result-block-inline.result-block-roll strong {
+  font-size: 0.7rem;
+}
+
+.result-block-inline.result-block-roll .result-block-details {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 24px rgb(0 0 0 / 28%);
+  color: var(--color-text-muted);
+  display: none;
+  left: 0;
+  line-height: 1.5;
+  min-width: 240px;
+  padding: 10px 12px;
+  position: absolute;
+  top: calc(100% + 6px);
+  white-space: normal;
+  z-index: 20;
+}
+
+.result-block-inline.result-block-roll:hover .result-block-details,
+.result-block-inline.result-block-roll:focus-within .result-block-details {
+  display: block;
+}
+
+.result-block-roll:not(.result-block-inline) {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  margin: 0 0 1rem;
+  padding: 6px 10px;
+}
+
+.result-block-roll:not(.result-block-inline) strong {
+  font-size: 0.75rem;
+}
+
+.result-block-roll:not(.result-block-inline) .result-block-details {
+  color: var(--color-text-muted);
+  display: none;
+  line-height: 1.5;
+}
+
+.result-block-roll:not(.result-block-inline):hover .result-block-details,
+.result-block-roll:not(.result-block-inline):focus-within .result-block-details {
+  display: inline;
+}
+
 .right-panel {
   display: grid;
   align-content: start;

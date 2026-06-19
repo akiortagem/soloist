@@ -1,6 +1,60 @@
 import { Extension } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { parseCommand } from "../../commands/parseCommand";
-import { createUnknownCommandResultBlock } from "../resultBlocks/createResultBlock";
+import type { ResultBlock } from "../../domain/domainTypes";
+import {
+  createInvalidCommandResultBlock,
+  createRollCommandResultBlock,
+  createUnknownCommandResultBlock,
+} from "../resultBlocks/createResultBlock";
+
+function createCommandResultBlock(commandText: string): ResultBlock {
+  const parsed = parseCommand(commandText);
+
+  switch (parsed.type) {
+    case "roll":
+      return createRollCommandResultBlock(parsed);
+    case "invalid":
+      return createInvalidCommandResultBlock(parsed);
+    case "unknown":
+      return createUnknownCommandResultBlock(parsed);
+    default:
+      return createUnknownCommandResultBlock({
+        type: "unknown",
+        raw: commandText,
+        commandName: parsed.type,
+        reason: "Command execution not implemented yet",
+      });
+  }
+}
+
+function findCommandStart(textBeforeCursor: string): number | null {
+  const slashIndex = textBeforeCursor.lastIndexOf("/");
+
+  if (slashIndex < 0) {
+    return null;
+  }
+
+  if (slashIndex > 0 && !/\s/.test(textBeforeCursor[slashIndex - 1])) {
+    return null;
+  }
+
+  return slashIndex;
+}
+
+function paragraphWithContent(
+  paragraph: ProseMirrorNode,
+  from: number,
+  to: number,
+): ProseMirrorNode | null {
+  if (to <= from) {
+    return null;
+  }
+
+  const content = paragraph.cut(from, to).content;
+  return paragraph.type.create(paragraph.attrs, content);
+}
 
 export const SlashCommandExtension = Extension.create({
   name: "slashCommand",
@@ -16,19 +70,47 @@ export const SlashCommandExtension = Extension.create({
           return false;
         }
 
-        const commandText = parent.textContent.trim();
+        const textBeforeCursor = parent.textBetween(0, $from.parentOffset);
+        const commandStart = findCommandStart(textBeforeCursor);
 
-        if (!commandText.startsWith("/")) {
+        if (commandStart === null) {
           return false;
         }
 
-        const parsed = parseCommand(commandText);
+        const commandText = textBeforeCursor.slice(commandStart);
+        const resultBlock = createCommandResultBlock(commandText);
+        if (resultBlock.type === "roll") {
+          const inlineResultNode = editor.schema.nodes.inlineResultBlock?.create({
+            block: resultBlock,
+          });
 
-        if (parsed.type !== "unknown") {
-          return false;
+          if (!inlineResultNode) {
+            return false;
+          }
+
+          const commandFrom = $from.start() + commandStart;
+          const commandTo = $from.pos;
+
+          editor
+            .chain()
+            .focus()
+            .command(({ tr, dispatch }) => {
+              if (!dispatch) {
+                return true;
+              }
+
+              tr.replaceWith(commandFrom, commandTo, inlineResultNode);
+              tr.setSelection(
+                TextSelection.create(tr.doc, commandFrom + inlineResultNode.nodeSize),
+              );
+              dispatch(tr.scrollIntoView());
+              return true;
+            })
+            .run();
+
+          return true;
         }
 
-        const resultBlock = createUnknownCommandResultBlock(parsed);
         const resultNode = editor.schema.nodes.resultBlock?.create({
           block: resultBlock,
         });
@@ -37,7 +119,15 @@ export const SlashCommandExtension = Extension.create({
           return false;
         }
 
-        const paragraphNode = editor.schema.nodes.paragraph.create();
+        const beforeParagraph = paragraphWithContent(parent, 0, commandStart);
+        const afterParagraph =
+          paragraphWithContent(parent, $from.parentOffset, parent.content.size) ??
+          editor.schema.nodes.paragraph.create();
+        const replacementNodes = [
+          beforeParagraph,
+          resultNode,
+          afterParagraph,
+        ].filter((node): node is ProseMirrorNode => Boolean(node));
         const from = $from.before();
         const to = $from.after();
 
@@ -49,7 +139,7 @@ export const SlashCommandExtension = Extension.create({
               return true;
             }
 
-            tr.replaceWith(from, to, [resultNode, paragraphNode]);
+            tr.replaceWith(from, to, replacementNodes);
             dispatch(tr.scrollIntoView());
             return true;
           })
