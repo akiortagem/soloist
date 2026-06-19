@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Editor } from "../editor/Editor";
 import {
   appStore,
   type AppRoute,
@@ -14,10 +15,10 @@ const routeLabels: Record<AppRoute, string> = {
 export function App() {
   const {
     activeCharacterSheet,
-    activeDocument,
     activeSession,
     chaosFactor,
     combatState,
+    documentSaveState,
     isCreatingSession,
     isLoadingSessions,
     persistenceError,
@@ -39,7 +40,15 @@ export function App() {
         </div>
         <div className="session-status">
           <span>{activeSession?.name ?? "No session"}</span>
-          <strong>{isLoadingSessions ? "Loading SQLite" : "SQLite local"}</strong>
+          <strong>
+            {isLoadingSessions
+              ? "Loading SQLite"
+              : documentSaveState === "pending"
+                ? "Saving"
+                : documentSaveState === "error"
+                  ? "Save error"
+                  : "SQLite local"}
+          </strong>
         </div>
       </header>
 
@@ -82,9 +91,9 @@ export function App() {
           </section>
         </aside>
 
-        <section className="editor-area" aria-label="Editor placeholder">
+        <section className="editor-area" aria-label="Main editor">
           <div className="editor-toolbar">
-            <span>{routeLabels[route]}</span>
+            <span>{persistenceError ?? persistenceMessage}</span>
             <button
               disabled={isCreatingSession}
               onClick={() => void appStore.createSession()}
@@ -94,17 +103,7 @@ export function App() {
             </button>
           </div>
 
-          <article className="editor-placeholder">
-            <p className="kicker">SQLite workspace</p>
-            <h2>{activeSession?.name ?? "No persisted session selected"}</h2>
-            <p>
-              {activeDocument
-                ? `${activeDocument.title} is loaded from the session document.`
-                : "Create a session to start a document."}
-            </p>
-            <pre>{persistenceMessage}</pre>
-            {persistenceError && <p className="error-state">{persistenceError}</p>}
-          </article>
+          <Editor />
         </section>
 
         <aside className="right-panel" aria-label="Session tools">

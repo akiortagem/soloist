@@ -22,6 +22,7 @@ export type AppState = {
   isCreatingSession: boolean;
   persistenceMessage: string;
   persistenceError?: string;
+  documentSaveState: "idle" | "pending" | "saved" | "error";
 };
 
 const DEFAULT_CHAOS_FACTOR = 5;
@@ -37,6 +38,7 @@ const initialState: AppState = {
   isLoadingSessions: true,
   isCreatingSession: false,
   persistenceMessage: "Opening local database...",
+  documentSaveState: "idle",
 };
 
 let state = initialState;
@@ -134,6 +136,7 @@ export const appStore = {
         activeSession: null,
         activeSessionId: undefined,
         combatState: null,
+        documentSaveState: "error",
         chaosFactor: DEFAULT_CHAOS_FACTOR,
         persistenceError: error instanceof Error ? error.message : String(error),
         persistenceMessage: "SQLite unavailable.",
@@ -187,22 +190,54 @@ export const appStore = {
     }
   },
 
+  setDocumentSavePending() {
+    setState({
+      documentSaveState: "pending",
+      persistenceError: undefined,
+      persistenceMessage: "Saving document...",
+    });
+  },
+
+  async saveDocument(
+    documentId: string,
+    input: { title?: string; contentMarkdown?: string },
+  ) {
+    try {
+      const repositories = await createRepositories();
+      const document = await repositories.documents.update({
+        id: documentId,
+        ...input,
+      });
+
+      if (document) {
+        setState({
+          activeDocument:
+            state.activeDocument?.id === document.id
+              ? document
+              : state.activeDocument,
+          documentSaveState: "saved",
+          persistenceError: undefined,
+          persistenceMessage: "Document saved to SQLite.",
+        });
+      }
+
+      return document;
+    } catch (error) {
+      setState({
+        documentSaveState: "error",
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Document save failed.",
+      });
+      return null;
+    }
+  },
+
   async saveActiveDocument(input: { title?: string; contentMarkdown?: string }) {
     if (!state.activeDocument) {
       return null;
     }
 
-    const repositories = await createRepositories();
-    const document = await repositories.documents.update({
-      id: state.activeDocument.id,
-      ...input,
-    });
-
-    if (document) {
-      setState({ activeDocument: document });
-    }
-
-    return document;
+    return this.saveDocument(state.activeDocument.id, input);
   },
 
   async saveActiveCharacterSheet(input: {

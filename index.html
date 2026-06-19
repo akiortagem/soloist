@@ -7,6 +7,26 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener("error", (event) => {
+        const root = document.getElementById("root");
+        if (!root || root.children.length > 0) return;
+        root.innerHTML =
+          '<main style="padding:24px;font:14px system-ui;color:#f3f5f8;background:#101216;min-height:100vh">' +
+          "<h1>Soloist failed to start</h1>" +
+          `<pre style="white-space:pre-wrap;color:#ffb4b4">${event.message}</pre>` +
+          "</main>";
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        const root = document.getElementById("root");
+        if (!root || root.children.length > 0) return;
+        root.innerHTML =
+          '<main style="padding:24px;font:14px system-ui;color:#f3f5f8;background:#101216;min-height:100vh">' +
+          "<h1>Soloist failed to start</h1>" +
+          `<pre style="white-space:pre-wrap;color:#ffb4b4">${event.reason}</pre>` +
+          "</main>";
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,0 +1,186 @@
+import type { JSONContent } from "@tiptap/core";
+
+type TextMark = "bold" | "italic";
+
+const EMPTY_DOCUMENT: JSONContent = {
+  type: "doc",
+  content: [{ type: "paragraph" }],
+};
+
+function textNode(text: string, marks: TextMark[] = []): JSONContent {
+  return {
+    type: "text",
+    text,
+    marks: marks.map((type) => ({ type })),
+  };
+}
+
+function parseInlineMarkdown(markdown: string): JSONContent[] {
+  const nodes: JSONContent[] = [];
+  const tokenPattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(markdown)) !== null) {
+    if (match.index > cursor) {
+      nodes.push(textNode(markdown.slice(cursor, match.index)));
+    }
+
+    const token = match[0];
+    if (token.startsWith("**") || token.startsWith("__")) {
+      nodes.push(textNode(token.slice(2, -2), ["bold"]));
+    } else {
+      nodes.push(textNode(token.slice(1, -1), ["italic"]));
+    }
+
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < markdown.length) {
+    nodes.push(textNode(markdown.slice(cursor)));
+  }
+
+  return nodes;
+}
+
+function paragraphNode(markdown: string): JSONContent {
+  const content = parseInlineMarkdown(markdown);
+
+  return content.length > 0
+    ? { type: "paragraph", content }
+    : { type: "paragraph" };
+}
+
+function headingNode(level: number, markdown: string): JSONContent {
+  const content = parseInlineMarkdown(markdown);
+
+  return {
+    type: "heading",
+    attrs: { level },
+    ...(content.length > 0 ? { content } : {}),
+  };
+}
+
+function bulletListNode(items: string[]): JSONContent {
+  return {
+    type: "bulletList",
+    content: items.map((item) => ({
+      type: "listItem",
+      content: [paragraphNode(item)],
+    })),
+  };
+}
+
+export function markdownToTiptapJson(markdown: string): JSONContent {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const content: JSONContent[] = [];
+  let paragraphLines: string[] = [];
+  let bulletItems: string[] = [];
+
+  function flushParagraph() {
+    if (paragraphLines.length === 0) {
+      return;
+    }
+
+    content.push(paragraphNode(paragraphLines.join(" ")));
+    paragraphLines = [];
+  }
+
+  function flushBullets() {
+    if (bulletItems.length === 0) {
+      return;
+    }
+
+    content.push(bulletListNode(bulletItems));
+    bulletItems = [];
+  }
+
+  for (const line of lines) {
+    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(line);
+    const bulletMatch = /^\s*[-*+]\s+(.+)$/.exec(line);
+
+    if (line.trim() === "") {
+      flushParagraph();
+      flushBullets();
+      continue;
+    }
+
+    if (headingMatch) {
+      flushParagraph();
+      flushBullets();
+      content.push(headingNode(headingMatch[1].length, headingMatch[2]));
+      continue;
+    }
+
+    if (bulletMatch) {
+      flushParagraph();
+      bulletItems.push(bulletMatch[1]);
+      continue;
+    }
+
+    flushBullets();
+    paragraphLines.push(line.trim());
+  }
+
+  flushParagraph();
+  flushBullets();
+
+  return content.length > 0 ? { type: "doc", content } : EMPTY_DOCUMENT;
+}
+
+function serializeTextNode(node: JSONContent): string {
+  const text = node.text ?? "";
+  const markTypes = new Set(node.marks?.map((mark) => mark.type));
+  const withItalic = markTypes.has("italic") ? `*${text}*` : text;
+
+  return markTypes.has("bold") ? `**${withItalic}**` : withItalic;
+}
+
+function serializeInline(content: JSONContent[] = []): string {
+  return content
+    .map((node) => {
+      if (node.type === "text") {
+        return serializeTextNode(node);
+      }
+
+      if (node.type === "hardBreak") {
+        return "\n";
+      }
+
+      return serializeInline(node.content);
+    })
+    .join("");
+}
+
+function serializeListItem(node: JSONContent): string {
+  const paragraphs =
+    node.content?.filter((child) => child.type === "paragraph") ?? [];
+  const text = paragraphs.map((paragraph) => serializeInline(paragraph.content)).join(" ");
+
+  return `- ${text}`;
+}
+
+function serializeBlock(node: JSONContent): string {
+  switch (node.type) {
+    case "heading": {
+      const level = Math.min(Math.max(Number(node.attrs?.level ?? 1), 1), 6);
+      return `${"#".repeat(level)} ${serializeInline(node.content)}`;
+    }
+
+    case "bulletList":
+      return (node.content ?? []).map(serializeListItem).join("\n");
+
+    case "paragraph":
+      return serializeInline(node.content);
+
+    default:
+      return serializeInline(node.content);
+  }
+}
+
+export function tiptapJsonToMarkdown(json: JSONContent): string {
+  return (json.content ?? [])
+    .map(serializeBlock)
+    .filter((block) => block.trim().length > 0)
+    .join("\n\n");
+}
