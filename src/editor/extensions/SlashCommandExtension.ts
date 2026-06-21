@@ -2,20 +2,20 @@ import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { parseCommand } from "../../commands/parseCommand";
-import type { ResultBlock } from "../../domain/domainTypes";
+import type { ParsedCommand } from "../../commands/commandTypes";
+import type { ResultBlock, SceneContainerPayload } from "../../domain/domainTypes";
 import { appStore } from "../../state/appStore";
 import {
   createAskCommandResultBlock,
   createChaosCommandResultBlock,
   createInvalidCommandResultBlock,
+  createResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
   createUnknownCommandResultBlock,
 } from "../resultBlocks/createResultBlock";
 
-function createCommandResultBlock(commandText: string): ResultBlock {
-  const parsed = parseCommand(commandText);
-
+function createCommandResultBlock(parsed: ParsedCommand): ResultBlock {
   switch (parsed.type) {
     case "ask":
       return createAskCommandResultBlock(parsed);
@@ -42,11 +42,19 @@ function createCommandResultBlock(commandText: string): ResultBlock {
     default:
       return createUnknownCommandResultBlock({
         type: "unknown",
-        raw: commandText,
+        raw: "raw" in parsed ? parsed.raw : "",
         commandName: parsed.type,
         reason: "Command execution not implemented yet",
       });
   }
+}
+
+function createSceneContainerPayload(): SceneContainerPayload {
+  return {
+    id: `scene_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    description: "",
+    descriptionLocked: false,
+  };
 }
 
 function findCommandStart(textBeforeCursor: string): number | null {
@@ -98,7 +106,59 @@ export const SlashCommandExtension = Extension.create({
         }
 
         const commandText = textBeforeCursor.slice(commandStart);
-        const resultBlock = createCommandResultBlock(commandText);
+        const parsedCommand = parseCommand(commandText);
+
+        if (parsedCommand.type === "scene" && appStore.getSnapshot().activeSession) {
+          const sceneNode = editor.schema.nodes.sceneContainer?.create(
+            {
+              payload: createSceneContainerPayload(),
+            },
+            editor.schema.nodes.paragraph.create(),
+          );
+
+          if (!sceneNode) {
+            return false;
+          }
+
+          const beforeParagraph = paragraphWithContent(parent, 0, commandStart);
+          const afterParagraph =
+            paragraphWithContent(parent, $from.parentOffset, parent.content.size) ??
+            editor.schema.nodes.paragraph.create();
+          const replacementNodes = [
+            beforeParagraph,
+            sceneNode,
+            afterParagraph,
+          ].filter((node): node is ProseMirrorNode => Boolean(node));
+          const from = $from.before();
+          const to = $from.after();
+
+          editor
+            .chain()
+            .focus()
+            .command(({ tr, dispatch }) => {
+              if (!dispatch) {
+                return true;
+              }
+
+              tr.replaceWith(from, to, replacementNodes);
+              dispatch(tr.scrollIntoView());
+              return true;
+            })
+            .run();
+
+          return true;
+        }
+
+        const resultBlock =
+          parsedCommand.type === "scene" && !appStore.getSnapshot().activeSession
+            ? createResultBlock("error", {
+                commandText,
+                payload: {
+                  commandName: "scene",
+                  reason: "No active session",
+                },
+              })
+            : createCommandResultBlock(parsedCommand);
         if (
           resultBlock.type === "roll" ||
           resultBlock.type === "stat" ||

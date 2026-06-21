@@ -1,5 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
-import type { ResultBlock } from "../domain/domainTypes";
+import type { ResultBlock, SceneContainerPayload } from "../domain/domainTypes";
 
 type TextMark = "bold" | "italic";
 
@@ -136,6 +136,17 @@ function resultBlockNode(block: ResultBlock): JSONContent {
   };
 }
 
+function sceneContainerNode(
+  payload: SceneContainerPayload,
+  content: JSONContent[],
+): JSONContent {
+  return {
+    type: "sceneContainer",
+    attrs: { payload },
+    content: content.length > 0 ? content : [{ type: "paragraph" }],
+  };
+}
+
 function isResultBlockType(type: string): type is ResultBlock["type"] {
   return (
     type === "roll" ||
@@ -174,8 +185,50 @@ function parseResultBlockFence(type: string, body: string): ResultBlock | null {
   }
 }
 
-export function markdownToTiptapJson(markdown: string): JSONContent {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+function parseSceneContainerFence(body: string): SceneContainerPayload | null {
+  try {
+    const parsed = JSON.parse(body) as Partial<SceneContainerPayload> & {
+      type?: unknown;
+    };
+
+    if (parsed.type || typeof parsed.id !== "string") {
+      return null;
+    }
+
+    const payload: SceneContainerPayload = {
+      id: parsed.id,
+      description: String(parsed.description ?? ""),
+      descriptionLocked: parsed.descriptionLocked === true,
+      oracleResult: parsed.oracleResult,
+      oracleError:
+        typeof parsed.oracleError === "string" ? parsed.oracleError : undefined,
+    };
+
+    if (typeof parsed.collapsed === "boolean") {
+      payload.collapsed = parsed.collapsed;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function findNextSceneFence(lines: string[], start: number, end: number): number {
+  for (let index = start; index < end; index += 1) {
+    if (/^:::trpg-scene\s*$/.test(lines[index])) {
+      return index;
+    }
+  }
+
+  return end;
+}
+
+function parseMarkdownLines(
+  lines: string[],
+  startIndex: number,
+  endIndex: number,
+): JSONContent[] {
   const content: JSONContent[] = [];
   let paragraphLines: string[] = [];
   let bulletItems: string[] = [];
@@ -198,7 +251,7 @@ export function markdownToTiptapJson(markdown: string): JSONContent {
     bulletItems = [];
   }
 
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+  for (let lineIndex = startIndex; lineIndex < endIndex; lineIndex += 1) {
     const line = lines[lineIndex];
     const headingMatch = /^(#{1,6})\s+(.+)$/.exec(line);
     const bulletMatch = /^\s*[-*+]\s+(.+)$/.exec(line);
@@ -213,7 +266,7 @@ export function markdownToTiptapJson(markdown: string): JSONContent {
       const bodyLines: string[] = [];
       let closed = false;
 
-      while (lineIndex + 1 < lines.length) {
+      while (lineIndex + 1 < endIndex) {
         lineIndex += 1;
         const nextLine = lines[lineIndex];
 
@@ -225,9 +278,23 @@ export function markdownToTiptapJson(markdown: string): JSONContent {
         bodyLines.push(nextLine);
       }
 
-      const block = closed
-        ? parseResultBlockFence(resultFenceMatch[1], bodyLines.join("\n"))
-        : null;
+      const body = bodyLines.join("\n");
+      const scenePayload =
+        closed && resultFenceMatch[1] === "scene"
+          ? parseSceneContainerFence(body)
+          : null;
+
+      if (scenePayload) {
+        const contentStart = lineIndex + 1;
+        const contentEnd = findNextSceneFence(lines, contentStart, endIndex);
+        const sceneContent = parseMarkdownLines(lines, contentStart, contentEnd);
+
+        content.push(sceneContainerNode(scenePayload, sceneContent));
+        lineIndex = contentEnd - 1;
+        continue;
+      }
+
+      const block = closed ? parseResultBlockFence(resultFenceMatch[1], body) : null;
 
       if (block) {
         content.push(resultBlockNode(block));
@@ -263,6 +330,13 @@ export function markdownToTiptapJson(markdown: string): JSONContent {
 
   flushParagraph();
   flushBullets();
+
+  return content;
+}
+
+export function markdownToTiptapJson(markdown: string): JSONContent {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const content = parseMarkdownLines(lines, 0, lines.length);
 
   return content.length > 0 ? { type: "doc", content } : EMPTY_DOCUMENT;
 }
@@ -330,6 +404,23 @@ function serializeBlock(node: JSONContent): string {
       }
 
       return [`:::trpg-${block.type}`, JSON.stringify(block), ":::"].join("\n");
+    }
+
+    case "sceneContainer": {
+      const payload = node.attrs?.payload as SceneContainerPayload | undefined;
+
+      if (!payload) {
+        return serializeInline(node.content);
+      }
+
+      const sceneContent = (node.content ?? [])
+        .map(serializeBlock)
+        .filter((block) => block.trim().length > 0)
+        .join("\n\n");
+
+      return [`:::trpg-scene`, JSON.stringify(payload), ":::", sceneContent]
+        .filter((part) => part.trim().length > 0)
+        .join("\n");
     }
 
     default:

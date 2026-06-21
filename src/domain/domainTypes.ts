@@ -114,3 +114,19 @@ export type ResultBlock = {
   collapsed?: boolean;
   payload: unknown;
 };
+
+export type SceneContainerPayload = {
+  id: string;
+  description: string;
+  descriptionLocked: boolean;
+  oracleResult?: {
+    chaosFactor: number;
+    roll: number;
+    adjustmentType: string;
+    providerId: string;
+    providerName: string;
+    explanation: string;
+  };
+  oracleError?: string;
+  collapsed?: boolean;
+};

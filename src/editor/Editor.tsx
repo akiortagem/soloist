@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { appStore, useAppStore } from "../state/appStore";
 import { InlineResultBlockExtension } from "./extensions/InlineResultBlockExtension";
 import { ResultBlockExtension } from "./extensions/ResultBlockExtension";
+import { SceneContainerExtension } from "./extensions/SceneContainerExtension";
 import { SlashCommandExtension } from "./extensions/SlashCommandExtension";
 import { markdownToTiptapJson, tiptapJsonToMarkdown } from "./markdown";
 
@@ -70,6 +71,7 @@ function SessionDocumentEditor({
       StarterKit,
       ResultBlockExtension,
       InlineResultBlockExtension,
+      SceneContainerExtension,
       SlashCommandExtension,
     ],
     content: markdownToTiptapJson(initialMarkdown),

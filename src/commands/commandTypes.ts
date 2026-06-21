@@ -17,7 +17,7 @@ export type ParsedAskCommand = {
 
 export type ParsedSceneCommand = {
   type: "scene";
-  prompt: string;
+  raw: string;
 };
 
 export type ParsedCombatCommand = {

@@ -165,10 +165,18 @@ describe("command parser foundation", () => {
     });
   });
 
-  it("identifies scene commands with quoted args", () => {
+  it("parses /scene with no arguments", () => {
+    expect(parseCommand("/scene")).toEqual({
+      type: "scene",
+      raw: "/scene",
+    });
+  });
+
+  it("returns invalid when /scene has arguments", () => {
     expect(parseCommand('/scene "I visit the guild"')).toMatchObject({
-      type: "unknown",
+      type: "invalid",
       commandName: "scene",
+      reason: "Scene command does not accept arguments",
     });
   });
 

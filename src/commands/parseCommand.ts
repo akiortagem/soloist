@@ -285,6 +285,22 @@ export function parseCommand(raw: string): ParsedCommand {
     };
   }
 
+  if (commandName === "scene") {
+    if (argsText.length > 0) {
+      return {
+        type: "invalid",
+        raw,
+        commandName,
+        reason: "Scene command does not accept arguments",
+      };
+    }
+
+    return {
+      type: "scene",
+      raw,
+    };
+  }
+
   return {
     type: "unknown",
     raw,

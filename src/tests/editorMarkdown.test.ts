@@ -121,4 +121,87 @@ describe("editor markdown persistence", () => {
     });
     expect(tiptapJsonToMarkdown(json)).toBe(markdown);
   });
+
+  it("round-trips scene containers with editable prose content", () => {
+    const payload = {
+      id: "scene_abc123",
+      description: "I enter the adventurer guild to see the notice board",
+      descriptionLocked: true,
+      oracleResult: {
+        chaosFactor: 5,
+        roll: 4,
+        adjustmentType: "Normal Scene",
+        providerId: "demo",
+        providerName: "Demo Oracle",
+        explanation: "Scene runs as expected.",
+      },
+      collapsed: false,
+    };
+    const markdown = [
+      "Before",
+      "",
+      ":::trpg-scene",
+      JSON.stringify(payload),
+      ":::",
+      "Scene content prose goes here.",
+      "",
+      "More scene content.",
+    ].join("\n");
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content?.[1]).toMatchObject({
+      type: "sceneContainer",
+      attrs: { payload },
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Scene content prose goes here." }],
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "More scene content." }],
+        },
+      ],
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
+
+  it("keeps consecutive scene containers separate when loading markdown", () => {
+    const first = {
+      id: "scene_first",
+      description: "First scene",
+      descriptionLocked: true,
+      collapsed: true,
+    };
+    const second = {
+      id: "scene_second",
+      description: "",
+      descriptionLocked: false,
+    };
+    const markdown = [
+      ":::trpg-scene",
+      JSON.stringify(first),
+      ":::",
+      "First content.",
+      "",
+      ":::trpg-scene",
+      JSON.stringify(second),
+      ":::",
+      "Second content.",
+    ].join("\n");
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content).toHaveLength(2);
+    expect(json.content?.[0]).toMatchObject({
+      type: "sceneContainer",
+      attrs: { payload: first },
+    });
+    expect(json.content?.[1]).toMatchObject({
+      type: "sceneContainer",
+      attrs: { payload: second },
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
 });
