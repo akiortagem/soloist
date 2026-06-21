@@ -4,6 +4,7 @@ import {
   extractCommandName,
   parseQuotedString,
   startsWithSlash,
+  tokenizeArgs,
   trimCommandInput,
 } from "./parserUtils";
 
@@ -86,6 +87,77 @@ function parseAskArgs(argsText: string):
   };
 }
 
+function parseStatArgs(argsText: string):
+  | { ok: true; sheetName: string; statName: string; delta: number }
+  | { ok: false; reason: string } {
+  let remaining = argsText.trim();
+
+  if (remaining.length === 0) {
+    return { ok: false, reason: "Missing character sheet name" };
+  }
+
+  let sheetName = "";
+
+  if (remaining.startsWith('"')) {
+    const parsedSheetName = parseQuotedString(remaining);
+
+    if (parsedSheetName.error) {
+      return { ok: false, reason: parsedSheetName.error };
+    }
+
+    sheetName = parsedSheetName.value ?? "";
+    remaining = parsedSheetName.rest.trim();
+  } else {
+    const firstToken = /^(\S+)(?:\s+([\s\S]*))?$/.exec(remaining);
+
+    if (!firstToken) {
+      return { ok: false, reason: "Missing character sheet name" };
+    }
+
+    sheetName = firstToken[1];
+    remaining = (firstToken[2] ?? "").trim();
+  }
+
+  if (sheetName.trim().length === 0) {
+    return { ok: false, reason: "Missing character sheet name" };
+  }
+
+  const tokens = tokenizeArgs(remaining);
+
+  if (tokens.length === 0 || tokens[0].trim().length === 0) {
+    return { ok: false, reason: "Missing stat name" };
+  }
+
+  if (tokens.length === 1) {
+    return { ok: false, reason: "Missing stat delta" };
+  }
+
+  if (tokens.length > 2) {
+    return { ok: false, reason: "Stat names with spaces are not supported" };
+  }
+
+  const [statName, deltaText] = tokens;
+
+  if (/\s/.test(statName)) {
+    return { ok: false, reason: "Stat names with spaces are not supported" };
+  }
+
+  if (!/^[+-]/.test(deltaText)) {
+    return { ok: false, reason: "Stat delta must include + or -" };
+  }
+
+  if (!/^[+-]\d+(?:\.\d+)?$/.test(deltaText)) {
+    return { ok: false, reason: "Stat delta must be numeric" };
+  }
+
+  return {
+    ok: true,
+    sheetName,
+    statName,
+    delta: Number(deltaText),
+  };
+}
+
 export function parseCommand(raw: string): ParsedCommand {
   const trimmed = trimCommandInput(raw);
 
@@ -141,6 +213,27 @@ export function parseCommand(raw: string): ParsedCommand {
       raw,
       odds: parsedAsk.odds,
       question: parsedAsk.question,
+    };
+  }
+
+  if (commandName === "stat") {
+    const parsedStat = parseStatArgs(argsText);
+
+    if (!parsedStat.ok) {
+      return {
+        type: "invalid",
+        raw,
+        commandName,
+        reason: parsedStat.reason,
+      };
+    }
+
+    return {
+      type: "stat",
+      raw,
+      sheetName: parsedStat.sheetName,
+      statName: parsedStat.statName,
+      delta: parsedStat.delta,
     };
   }
 

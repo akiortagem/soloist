@@ -1,13 +1,25 @@
 import { useSyncExternalStore } from "react";
 import type {
   CharacterSheet,
+  CharacterSheetTemplate,
+  CharacterTemplateItem,
   CombatState,
   Document,
   Session,
 } from "../domain/domainTypes";
+import {
+  createFieldsFromTemplate,
+  normalizeTemplateItems,
+  syncFieldsWithTemplate,
+} from "../characterSheets/characterSheetTemplateLogic";
 import { createRepositories } from "../persistence/sessionRepository";
 
-export type AppRoute = "sessions" | "templates" | "settings";
+export type AppRoute =
+  | "sessions"
+  | "characterSheets"
+  | "characterSheetBuilder"
+  | "templates"
+  | "settings";
 
 export type AppState = {
   route: AppRoute;
@@ -15,11 +27,17 @@ export type AppState = {
   activeSessionId?: string;
   activeSession: Session | null;
   activeDocument: Document | null;
+  characterSheets: CharacterSheet[];
   activeCharacterSheet: CharacterSheet | null;
+  characterSheetTemplates: CharacterSheetTemplate[];
+  activeTemplateId?: string;
+  activeTemplate: CharacterSheetTemplate | null;
   combatState: CombatState | null;
   chaosFactor: number;
   isLoadingSessions: boolean;
   isCreatingSession: boolean;
+  isLoadingTemplates: boolean;
+  isSavingTemplate: boolean;
   persistenceMessage: string;
   persistenceError?: string;
   documentSaveState: "idle" | "pending" | "saved" | "error";
@@ -27,16 +45,35 @@ export type AppState = {
 
 const DEFAULT_CHAOS_FACTOR = 5;
 
+export type StatDeltaResult =
+  | {
+      ok: true;
+      sheetName: string;
+      statName: string;
+      delta: number;
+      beforeValue: number;
+      afterValue: number;
+    }
+  | {
+      ok: false;
+      reason: string;
+    };
+
 const initialState: AppState = {
   route: "sessions",
   sessions: [],
   activeSession: null,
   activeDocument: null,
+  characterSheets: [],
   activeCharacterSheet: null,
+  characterSheetTemplates: [],
+  activeTemplate: null,
   combatState: null,
   chaosFactor: DEFAULT_CHAOS_FACTOR,
   isLoadingSessions: true,
   isCreatingSession: false,
+  isLoadingTemplates: false,
+  isSavingTemplate: false,
   persistenceMessage: "Opening local database...",
   documentSaveState: "idle",
 };
@@ -61,6 +98,7 @@ async function loadActiveSessionData(activeSession: Session | null) {
   if (!activeSession) {
     setState({
       activeDocument: null,
+      characterSheets: [],
       activeCharacterSheet: null,
       combatState: null,
       chaosFactor: DEFAULT_CHAOS_FACTOR,
@@ -86,6 +124,7 @@ async function loadActiveSessionData(activeSession: Session | null) {
 
   setState({
     activeDocument: document,
+    characterSheets: sheets,
     activeCharacterSheet,
     combatState,
     chaosFactor: activeSession.chaosFactor,
@@ -132,6 +171,7 @@ export const appStore = {
     } catch (error) {
       setState({
         activeDocument: null,
+        characterSheets: [],
         activeCharacterSheet: null,
         activeSession: null,
         activeSessionId: undefined,
@@ -143,6 +183,210 @@ export const appStore = {
       });
     } finally {
       setState({ isLoadingSessions: false });
+    }
+  },
+
+  async loadTemplates() {
+    setState({
+      isLoadingTemplates: true,
+      persistenceError: undefined,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      const loadedTemplates = await repositories.characterSheets.listTemplates();
+      const characterSheetTemplates = loadedTemplates.map((template) => ({
+        ...template,
+        fields: normalizeTemplateItems(template.fields),
+      }));
+      const activeTemplate =
+        characterSheetTemplates.find(
+          (template) => template.id === state.activeTemplateId,
+        ) ??
+        characterSheetTemplates[0] ??
+        null;
+
+      setState({
+        characterSheetTemplates,
+        activeTemplateId: activeTemplate?.id,
+        activeTemplate,
+        persistenceMessage:
+          characterSheetTemplates.length > 0
+            ? `Read ${characterSheetTemplates.length} template${
+                characterSheetTemplates.length === 1 ? "" : "s"
+              } from SQLite.`
+            : "No templates yet.",
+      });
+    } catch (error) {
+      setState({
+        characterSheetTemplates: [],
+        activeTemplate: null,
+        activeTemplateId: undefined,
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Template load failed.",
+      });
+    } finally {
+      setState({ isLoadingTemplates: false });
+    }
+  },
+
+  selectTemplate(templateId: string) {
+    const activeTemplate =
+      state.characterSheetTemplates.find(
+        (template) => template.id === templateId,
+      ) ?? null;
+
+    setState({
+      activeTemplateId: activeTemplate?.id,
+      activeTemplate,
+      persistenceError: undefined,
+    });
+  },
+
+  async createTemplate(input?: {
+    name?: string;
+    fields?: CharacterTemplateItem[];
+  }) {
+    setState({
+      isSavingTemplate: true,
+      persistenceError: undefined,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      const createdTemplate = await repositories.characterSheets.createTemplate({
+        name: input?.name?.trim() || "New Template",
+        fields: normalizeTemplateItems(input?.fields ?? []),
+      });
+      const characterSheetTemplates =
+        await repositories.characterSheets.listTemplates();
+      const activeTemplate =
+        characterSheetTemplates.find(
+          (template) => template.id === createdTemplate.id,
+        ) ?? createdTemplate;
+
+      setState({
+        characterSheetTemplates,
+        activeTemplateId: activeTemplate.id,
+        activeTemplate,
+        persistenceMessage: `Created template ${activeTemplate.name}.`,
+      });
+
+      return activeTemplate;
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Template create failed.",
+      });
+      return null;
+    } finally {
+      setState({ isSavingTemplate: false });
+    }
+  },
+
+  async saveTemplate(input: {
+    id: string;
+    name?: string;
+    fields?: CharacterTemplateItem[];
+  }) {
+    setState({
+      isSavingTemplate: true,
+      persistenceError: undefined,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      const activeTemplate = await repositories.characterSheets.updateTemplate({
+        id: input.id,
+        name: input.name?.trim() || undefined,
+        fields: input.fields ? normalizeTemplateItems(input.fields) : undefined,
+      });
+
+      if (!activeTemplate) {
+        return null;
+      }
+
+      const templateSheets =
+        await repositories.characterSheets.listByTemplateId(activeTemplate.id);
+      const syncedSheets: CharacterSheet[] = [];
+
+      for (const sheet of templateSheets) {
+        const fields = syncFieldsWithTemplate(sheet.fields, activeTemplate.fields);
+
+        if (JSON.stringify(fields) === JSON.stringify(sheet.fields)) {
+          syncedSheets.push(sheet);
+          continue;
+        }
+
+        const updatedSheet = await repositories.characterSheets.update({
+          id: sheet.id,
+          fields,
+        });
+
+        syncedSheets.push(updatedSheet ?? sheet);
+      }
+
+      setState({
+        activeTemplate,
+        activeTemplateId: activeTemplate.id,
+        characterSheetTemplates: state.characterSheetTemplates.map((template) =>
+          template.id === activeTemplate.id ? activeTemplate : template,
+        ),
+        activeCharacterSheet:
+          syncedSheets.find(
+            (sheet) => sheet.id === state.activeCharacterSheet?.id,
+          ) ?? state.activeCharacterSheet,
+        characterSheets: state.characterSheets.map(
+          (sheet) =>
+            syncedSheets.find((syncedSheet) => syncedSheet.id === sheet.id) ??
+            sheet,
+        ),
+        persistenceMessage: `Saved template ${activeTemplate.name}.`,
+      });
+
+      return activeTemplate;
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Template save failed.",
+      });
+      return null;
+    } finally {
+      setState({ isSavingTemplate: false });
+    }
+  },
+
+  async deleteTemplate(templateId: string) {
+    setState({
+      isSavingTemplate: true,
+      persistenceError: undefined,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      await repositories.characterSheets.deleteTemplate(templateId);
+      const characterSheetTemplates =
+        await repositories.characterSheets.listTemplates();
+      const activeTemplate =
+        state.activeTemplateId === templateId
+          ? (characterSheetTemplates[0] ?? null)
+          : (characterSheetTemplates.find(
+              (template) => template.id === state.activeTemplateId,
+            ) ?? null);
+
+      setState({
+        characterSheetTemplates,
+        activeTemplateId: activeTemplate?.id,
+        activeTemplate,
+        persistenceMessage: "Template deleted.",
+      });
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Template delete failed.",
+      });
+    } finally {
+      setState({ isSavingTemplate: false });
     }
   },
 
@@ -255,10 +499,249 @@ export const appStore = {
     });
 
     if (activeCharacterSheet) {
-      setState({ activeCharacterSheet });
+      setState({
+        activeCharacterSheet,
+        characterSheets: state.characterSheets.map((sheet) =>
+          sheet.id === activeCharacterSheet.id ? activeCharacterSheet : sheet,
+        ),
+        persistenceError: undefined,
+        persistenceMessage: `Saved sheet ${activeCharacterSheet.name}.`,
+      });
     }
 
     return activeCharacterSheet;
+  },
+
+  applyStatDelta(input: {
+    sheetName: string;
+    statName: string;
+    delta: number;
+  }): StatDeltaResult {
+    const normalizedSheetName = input.sheetName.trim().toLocaleLowerCase();
+    const normalizedStatName = input.statName.trim().toLocaleLowerCase();
+    const sheet =
+      state.characterSheets.find(
+        (candidate) =>
+          candidate.name.trim().toLocaleLowerCase() === normalizedSheetName,
+      ) ?? null;
+
+    if (!sheet) {
+      return {
+        ok: false,
+        reason: `Character sheet "${input.sheetName}" was not found`,
+      };
+    }
+
+    const field =
+      sheet.fields.find(
+        (candidate) =>
+          candidate.name.trim().toLocaleLowerCase() === normalizedStatName,
+      ) ?? null;
+
+    if (!field) {
+      return {
+        ok: false,
+        reason: `Stat "${input.statName}" was not found on ${sheet.name}`,
+      };
+    }
+
+    if (field.type !== "number" || typeof field.value !== "number") {
+      return {
+        ok: false,
+        reason: `${sheet.name} ${field.name} is not numeric`,
+      };
+    }
+
+    const beforeValue = field.value;
+    const afterValue = beforeValue + input.delta;
+    const updatedSheet: CharacterSheet = {
+      ...sheet,
+      fields: sheet.fields.map((candidate) =>
+        candidate.id === field.id
+          ? {
+              ...candidate,
+              value: afterValue,
+            }
+          : candidate,
+      ),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setState({
+      activeCharacterSheet:
+        state.activeCharacterSheet?.id === updatedSheet.id
+          ? updatedSheet
+          : state.activeCharacterSheet,
+      characterSheets: state.characterSheets.map((candidate) =>
+        candidate.id === updatedSheet.id ? updatedSheet : candidate,
+      ),
+      persistenceError: undefined,
+      persistenceMessage: `Updated ${updatedSheet.name} ${field.name}.`,
+    });
+
+    void createRepositories()
+      .then((repositories) =>
+        repositories.characterSheets.update({
+          id: updatedSheet.id,
+          fields: updatedSheet.fields,
+        }),
+      )
+      .catch((error) => {
+        setState({
+          persistenceError: error instanceof Error ? error.message : String(error),
+          persistenceMessage: "Stat update failed.",
+        });
+      });
+
+    return {
+      ok: true,
+      sheetName: updatedSheet.name,
+      statName: field.name,
+      delta: input.delta,
+      beforeValue,
+      afterValue,
+    };
+  },
+
+  async selectCharacterSheet(sheetId: string) {
+    if (!state.activeSession) {
+      return null;
+    }
+
+    const activeCharacterSheet =
+      state.characterSheets.find((sheet) => sheet.id === sheetId) ?? null;
+
+    if (!activeCharacterSheet) {
+      return null;
+    }
+
+    const repositories = await createRepositories();
+    const activeSession = await repositories.sessions.update({
+      id: state.activeSession.id,
+      activeCharacterSheetId: activeCharacterSheet.id,
+    });
+
+    setState({
+      activeCharacterSheet,
+      activeSession: activeSession ?? state.activeSession,
+      activeSessionId: activeSession?.id ?? state.activeSessionId,
+      sessions: activeSession
+        ? state.sessions.map((session) =>
+            session.id === activeSession.id ? activeSession : session,
+          )
+        : state.sessions,
+      persistenceError: undefined,
+    });
+
+    return activeCharacterSheet;
+  },
+
+  async createCharacterSheet(input: {
+    name: string;
+    templateId: string;
+  }) {
+    if (!state.activeSession) {
+      return null;
+    }
+
+    const template =
+      state.characterSheetTemplates.find(
+        (candidate) => candidate.id === input.templateId,
+      ) ?? null;
+
+    if (!template) {
+      setState({
+        persistenceError: "Choose an existing character sheet template.",
+        persistenceMessage: "Sheet create failed.",
+      });
+      return null;
+    }
+
+    try {
+      const repositories = await createRepositories();
+      const createdSheet = await repositories.characterSheets.create({
+        sessionId: state.activeSession.id,
+        name: input.name.trim() || "New Character",
+        templateId: template.id,
+        templateName: template.name,
+        fields: createFieldsFromTemplate(template.fields),
+      });
+      const activeSession = await repositories.sessions.update({
+        id: state.activeSession.id,
+        activeCharacterSheetId: createdSheet.id,
+      });
+      const characterSheets = await repositories.characterSheets.listBySessionId(
+        state.activeSession.id,
+      );
+      const activeCharacterSheet =
+        characterSheets.find((sheet) => sheet.id === createdSheet.id) ??
+        createdSheet;
+
+      setState({
+        activeCharacterSheet,
+        characterSheets,
+        activeSession: activeSession ?? state.activeSession,
+        activeSessionId: activeSession?.id ?? state.activeSessionId,
+        sessions: activeSession
+          ? state.sessions.map((session) =>
+              session.id === activeSession.id ? activeSession : session,
+            )
+          : state.sessions,
+        persistenceError: undefined,
+        persistenceMessage: `Created sheet ${activeCharacterSheet.name}.`,
+      });
+
+      return activeCharacterSheet;
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Sheet create failed.",
+      });
+      return null;
+    }
+  },
+
+  async deleteCharacterSheet(sheetId: string) {
+    if (!state.activeSession) {
+      return;
+    }
+
+    try {
+      const repositories = await createRepositories();
+      await repositories.characterSheets.delete(sheetId);
+      const characterSheets = await repositories.characterSheets.listBySessionId(
+        state.activeSession.id,
+      );
+      const activeCharacterSheet =
+        state.activeCharacterSheet?.id === sheetId
+          ? (characterSheets[0] ?? null)
+          : (characterSheets.find(
+              (sheet) => sheet.id === state.activeCharacterSheet?.id,
+            ) ?? null);
+      const activeSession = await repositories.sessions.update({
+        id: state.activeSession.id,
+        activeCharacterSheetId: activeCharacterSheet?.id ?? null,
+      });
+
+      setState({
+        activeCharacterSheet,
+        characterSheets,
+        activeSession: activeSession ?? state.activeSession,
+        activeSessionId: activeSession?.id ?? state.activeSessionId,
+        sessions: activeSession
+          ? state.sessions.map((session) =>
+              session.id === activeSession.id ? activeSession : session,
+            )
+          : state.sessions,
+        persistenceError: undefined,
+        persistenceMessage: "Character sheet deleted.",
+      });
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Sheet delete failed.",
+      });
+    }
   },
 
   async saveCombatState(input: {

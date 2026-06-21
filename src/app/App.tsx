@@ -1,31 +1,27 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { CharacterSheetPanel } from "../characterSheets/CharacterSheetPanel";
+import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
 import { Editor } from "../editor/Editor";
-import {
-  appStore,
-  type AppRoute,
-  useAppStore,
-} from "../state/appStore";
+import { appStore, useAppStore } from "../state/appStore";
 
-const routeLabels: Record<AppRoute, string> = {
-  sessions: "Sessions",
-  templates: "Templates",
-  settings: "Settings",
-};
+const navigationRoutes = [
+  { key: "sessions", label: "Sessions" },
+  { key: "characterSheets", label: "Character Sheets" },
+  { key: "templates", label: "Templates" },
+  { key: "settings", label: "Settings" },
+] as const;
 
 export function App() {
   const {
-    activeCharacterSheet,
     activeSession,
     chaosFactor,
     combatState,
-    documentSaveState,
     isCreatingSession,
     isLoadingSessions,
-    persistenceError,
-    persistenceMessage,
     route,
     sessions,
   } = useAppStore();
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
   useEffect(() => {
     void appStore.loadSessions();
@@ -33,42 +29,34 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header className="top-bar">
-        <div>
-          <h1>Soloist</h1>
-          <p>Solo TRPG markdown workspace</p>
-        </div>
-        <div className="session-status">
-          <span>{activeSession?.name ?? "No session"}</span>
-          <strong>
-            {isLoadingSessions
-              ? "Loading SQLite"
-              : documentSaveState === "pending"
-                ? "Saving"
-                : documentSaveState === "error"
-                  ? "Save error"
-                  : "SQLite local"}
-          </strong>
-        </div>
-      </header>
-
-      <div className="workspace">
+      <div className={`workspace${isRightPanelOpen ? " tools-open" : ""}`}>
         <aside className="left-sidebar" aria-label="Primary navigation">
           <nav>
-            {(Object.keys(routeLabels) as AppRoute[]).map((routeKey) => (
+            {navigationRoutes.map(({ key, label }) => (
               <button
-                className={route === routeKey ? "active" : ""}
-                key={routeKey}
-                onClick={() => appStore.setRoute(routeKey)}
+                className={route === key ? "active" : ""}
+                key={key}
+                onClick={() => appStore.setRoute(key)}
                 type="button"
               >
-                {routeLabels[routeKey]}
+                {label}
               </button>
             ))}
           </nav>
 
           <section>
-            <h2>Documents</h2>
+            <div className="sidebar-section-header">
+              <h2>Documents</h2>
+              <button
+                aria-label="New session"
+                disabled={isCreatingSession}
+                onClick={() => void appStore.createSession()}
+                title="New session"
+                type="button"
+              >
+                +
+              </button>
+            </div>
             <div className="session-list">
               {sessions.length === 0 && (
                 <p className="empty-state">
@@ -92,53 +80,52 @@ export function App() {
         </aside>
 
         <section className="editor-area" aria-label="Main editor">
-          <div className="editor-toolbar">
-            <span>{persistenceError ?? persistenceMessage}</span>
-            <button
-              disabled={isCreatingSession}
-              onClick={() => void appStore.createSession()}
-              type="button"
-            >
-              {isCreatingSession ? "Creating..." : "New Session"}
-            </button>
-          </div>
-
-          <Editor />
+          {route === "characterSheets" || route === "characterSheetBuilder" ? (
+            <CharacterSheetPanel />
+          ) : route === "templates" ? (
+            <CharacterSheetTemplatePanel />
+          ) : (
+            <Editor />
+          )}
         </section>
 
-        <aside className="right-panel" aria-label="Session tools">
-          <section>
-            <h2>Character Sheets</h2>
-            <p>
-              {activeCharacterSheet
-                ? activeCharacterSheet.name
-                : "No active sheet for this session."}
-            </p>
-          </section>
+        <button
+          aria-expanded={isRightPanelOpen}
+          aria-label={isRightPanelOpen ? "Hide tools panel" : "Show tools panel"}
+          className="tools-edge-toggle"
+          onClick={() => setIsRightPanelOpen((isOpen) => !isOpen)}
+          title={isRightPanelOpen ? "Hide tools" : "Show tools"}
+          type="button"
+        >
+          {isRightPanelOpen ? "›" : "‹"}
+        </button>
 
-          <section>
-            <h2>Combat Tracker</h2>
-            <p>
-              {combatState?.active
-                ? `${combatState.combatants.length} combatants`
-                : "No active combat."}
-            </p>
-          </section>
+        {isRightPanelOpen ? (
+          <aside className="right-panel" aria-label="Session tools">
+            <section>
+              <h2>Combat Tracker</h2>
+              <p>
+                {combatState?.active
+                  ? `${combatState.combatants.length} combatants`
+                  : "No active combat."}
+              </p>
+            </section>
 
-          <section>
-            <h2>Oracle Settings</h2>
-            <dl>
-              <div>
-                <dt>Provider</dt>
-                <dd>Demo oracle</dd>
-              </div>
-              <div>
-                <dt>Chaos Factor</dt>
-                <dd>{chaosFactor}</dd>
-              </div>
-            </dl>
-          </section>
-        </aside>
+            <section>
+              <h2>Oracle Settings</h2>
+              <dl>
+                <div>
+                  <dt>Provider</dt>
+                  <dd>Demo oracle</dd>
+                </div>
+                <div>
+                  <dt>Chaos Factor</dt>
+                  <dd>{chaosFactor}</dd>
+                </div>
+              </dl>
+            </section>
+          </aside>
+        ) : null}
       </div>
     </main>
   );

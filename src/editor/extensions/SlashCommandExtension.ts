@@ -3,10 +3,12 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { parseCommand } from "../../commands/parseCommand";
 import type { ResultBlock } from "../../domain/domainTypes";
+import { appStore } from "../../state/appStore";
 import {
   createAskCommandResultBlock,
   createInvalidCommandResultBlock,
   createRollCommandResultBlock,
+  createStatCommandResultBlock,
   createUnknownCommandResultBlock,
 } from "../resultBlocks/createResultBlock";
 
@@ -18,6 +20,15 @@ function createCommandResultBlock(commandText: string): ResultBlock {
       return createAskCommandResultBlock(parsed);
     case "roll":
       return createRollCommandResultBlock(parsed);
+    case "stat":
+      return createStatCommandResultBlock(
+        parsed,
+        appStore.applyStatDelta({
+          sheetName: parsed.sheetName,
+          statName: parsed.statName,
+          delta: parsed.delta,
+        }),
+      );
     case "invalid":
       return createInvalidCommandResultBlock(parsed);
     case "unknown":
@@ -82,7 +93,7 @@ export const SlashCommandExtension = Extension.create({
 
         const commandText = textBeforeCursor.slice(commandStart);
         const resultBlock = createCommandResultBlock(commandText);
-        if (resultBlock.type === "roll") {
+        if (resultBlock.type === "roll" || resultBlock.type === "stat") {
           const inlineResultNode = editor.schema.nodes.inlineResultBlock?.create({
             block: resultBlock,
           });

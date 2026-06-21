@@ -26,6 +26,7 @@ export type ParsedCombatCommand = {
 
 export type ParsedStatCommand = {
   type: "stat";
+  raw: string;
   sheetName: string;
   statName: string;
   delta: number;

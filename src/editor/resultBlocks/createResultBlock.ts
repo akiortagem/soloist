@@ -2,9 +2,11 @@ import type {
   ParsedAskCommand,
   ParsedInvalidCommand,
   ParsedRollCommand,
+  ParsedStatCommand,
   ParsedUnknownCommand,
 } from "../../commands/commandTypes";
 import type { ResultBlock } from "../../domain/domainTypes";
+import type { StatDeltaResult } from "../../state/appStore";
 import { rollDice } from "../../dice/rollDice";
 import { getActiveOracleProvider } from "../../oracle/oracleRegistry";
 
@@ -98,5 +100,31 @@ export function createAskCommandResultBlock(command: ParsedAskCommand): ResultBl
     commandText: command.raw,
     collapsed: true,
     payload: result,
+  });
+}
+
+export function createStatCommandResultBlock(
+  command: ParsedStatCommand,
+  result: StatDeltaResult,
+): ResultBlock {
+  if (!result.ok) {
+    return createResultBlock("error", {
+      commandText: command.raw,
+      payload: {
+        commandName: "stat",
+        reason: result.reason,
+      },
+    });
+  }
+
+  return createResultBlock("stat", {
+    commandText: command.raw,
+    payload: {
+      sheet: result.sheetName,
+      stat: result.statName,
+      delta: result.delta,
+      beforeValue: result.beforeValue,
+      afterValue: result.afterValue,
+    },
   });
 }

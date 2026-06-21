@@ -172,10 +172,94 @@ describe("command parser foundation", () => {
     });
   });
 
-  it("identifies stat commands with quoted args", () => {
-    expect(parseCommand('/stat "Kael Voss" HP -4')).toMatchObject({
-      type: "unknown",
+  it("parses /stat with an unquoted sheet name and negative delta", () => {
+    expect(parseCommand("/stat Kael HP -4")).toEqual({
+      type: "stat",
+      raw: "/stat Kael HP -4",
+      sheetName: "Kael",
+      statName: "HP",
+      delta: -4,
+    });
+  });
+
+  it("parses /stat with quoted sheet names", () => {
+    expect(parseCommand('/stat "Kael Voss" HP -4')).toEqual({
+      type: "stat",
+      raw: '/stat "Kael Voss" HP -4',
+      sheetName: "Kael Voss",
+      statName: "HP",
+      delta: -4,
+    });
+    expect(parseCommand('/stat "Bandit A" HP -2')).toEqual({
+      type: "stat",
+      raw: '/stat "Bandit A" HP -2',
+      sheetName: "Bandit A",
+      statName: "HP",
+      delta: -2,
+    });
+  });
+
+  it("parses /stat with a positive delta", () => {
+    expect(parseCommand("/stat Kael Gold +50")).toEqual({
+      type: "stat",
+      raw: "/stat Kael Gold +50",
+      sheetName: "Kael",
+      statName: "Gold",
+      delta: 50,
+    });
+  });
+
+  it("returns invalid when /stat delta does not include a sign", () => {
+    expect(parseCommand("/stat Kael HP 4")).toEqual({
+      type: "invalid",
+      raw: "/stat Kael HP 4",
       commandName: "stat",
+      reason: "Stat delta must include + or -",
+    });
+  });
+
+  it("returns invalid when /stat is missing required arguments", () => {
+    expect(parseCommand("/stat Kael HP")).toEqual({
+      type: "invalid",
+      raw: "/stat Kael HP",
+      commandName: "stat",
+      reason: "Missing stat delta",
+    });
+    expect(parseCommand("/stat Kael")).toEqual({
+      type: "invalid",
+      raw: "/stat Kael",
+      commandName: "stat",
+      reason: "Missing stat name",
+    });
+    expect(parseCommand("/stat")).toEqual({
+      type: "invalid",
+      raw: "/stat",
+      commandName: "stat",
+      reason: "Missing character sheet name",
+    });
+  });
+
+  it("returns invalid when /stat uses an unsupported multi-token stat name", () => {
+    expect(parseCommand("/stat Kael Hit Points -4")).toEqual({
+      type: "invalid",
+      raw: "/stat Kael Hit Points -4",
+      commandName: "stat",
+      reason: "Stat names with spaces are not supported",
+    });
+    expect(parseCommand('/stat Kael "Hit Points" -4')).toEqual({
+      type: "invalid",
+      raw: '/stat Kael "Hit Points" -4',
+      commandName: "stat",
+      reason: "Stat names with spaces are not supported",
+    });
+  });
+
+  it("returns invalid when /stat delta is not numeric", () => {
+    expect(parseCommand("/stat Kael HP nope")).toEqual({
+      type: "invalid",
+      raw: "/stat Kael HP nope",
+      commandName: "stat",
+      reason: "Stat delta must include + or -",
     });
   });
 

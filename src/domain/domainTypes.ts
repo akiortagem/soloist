@@ -19,6 +19,7 @@ export type Document = {
 
 export type CharacterField = {
   id: string;
+  templateFieldId?: string;
   name: string;
   type: "number" | "text" | "boolean" | "longText";
   value: string | number | boolean;
@@ -31,6 +32,8 @@ export type CharacterSheet = {
   id: string;
   sessionId: string;
   name: string;
+  templateId?: string;
+  templateName?: string;
   fields: CharacterField[];
   createdAt: string;
   updatedAt: string;
@@ -38,6 +41,7 @@ export type CharacterSheet = {
 
 export type CharacterTemplateField = {
   id: string;
+  kind?: "field";
   name: string;
   type: "number" | "text" | "boolean" | "longText";
   defaultValue: string | number | boolean;
@@ -46,10 +50,40 @@ export type CharacterTemplateField = {
   group?: string;
 };
 
+export type CharacterTemplateSeparator = {
+  id: string;
+  kind: "separator";
+  label?: string;
+};
+
+export type CharacterTemplateGroup = {
+  id: string;
+  kind: "group";
+  name: string;
+  fields: CharacterTemplateField[];
+};
+
+export type CharacterTemplateLayoutColumn = {
+  id: string;
+  fields: CharacterTemplateItem[];
+};
+
+export type CharacterTemplateLayout = {
+  id: string;
+  kind: "layout";
+  columns: CharacterTemplateLayoutColumn[];
+};
+
+export type CharacterTemplateItem =
+  | CharacterTemplateField
+  | CharacterTemplateSeparator
+  | CharacterTemplateGroup
+  | CharacterTemplateLayout;
+
 export type CharacterSheetTemplate = {
   id: string;
   name: string;
-  fields: CharacterTemplateField[];
+  fields: CharacterTemplateItem[];
   createdAt: string;
   updatedAt: string;
 };

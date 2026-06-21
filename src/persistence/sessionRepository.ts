@@ -60,7 +60,7 @@ export class SessionRepository {
     id: string;
     name?: string;
     chaosFactor?: number;
-    activeCharacterSheetId?: string;
+    activeCharacterSheetId?: string | null;
   }) {
     const current = await this.get(input.id);
 
@@ -73,7 +73,9 @@ export class SessionRepository {
       name: input.name ?? current.name,
       chaosFactor: input.chaosFactor ?? current.chaosFactor,
       activeCharacterSheetId:
-        input.activeCharacterSheetId ?? current.activeCharacterSheetId,
+        input.activeCharacterSheetId === undefined
+          ? current.activeCharacterSheetId
+          : (input.activeCharacterSheetId ?? undefined),
       updatedAt: nowIso(),
     };
 

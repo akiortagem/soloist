@@ -112,5 +112,17 @@ pub fn migrations() -> Vec<Migration> {
             sql: "CREATE INDEX IF NOT EXISTS idx_combat_states_session_id ON combat_states(session_id);",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 10,
+            description: "add_character_sheet_template_id",
+            sql: "ALTER TABLE character_sheets ADD COLUMN template_id TEXT;",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "add_character_sheet_template_name",
+            sql: "ALTER TABLE character_sheets ADD COLUMN template_name TEXT;",
+            kind: MigrationKind::Up,
+        },
     ]
 }

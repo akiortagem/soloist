@@ -90,4 +90,35 @@ describe("editor markdown persistence", () => {
     });
     expect(tiptapJsonToMarkdown(json)).toBe(markdown);
   });
+
+  it("round-trips inline stat result blocks", () => {
+    const block = {
+      id: "stat_test",
+      type: "stat",
+      createdAt: "2026-06-19T00:00:00.000Z",
+      commandText: "/stat Kael HP -4",
+      payload: {
+        sheet: "Kael",
+        stat: "HP",
+        delta: -4,
+        beforeValue: 16,
+        afterValue: 12,
+      },
+    };
+    const markdown = `Damage {{trpg-stat:${encodeURIComponent(
+      JSON.stringify(block),
+    )}}} taken`;
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Damage " },
+        { type: "inlineResultBlock", attrs: { block } },
+        { type: "text", text: " taken" },
+      ],
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
 });

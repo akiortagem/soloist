@@ -16,21 +16,32 @@ function textNode(text: string, marks: TextMark[] = []): JSONContent {
   };
 }
 
+function isInlineResultBlockType(type: string): type is "roll" | "stat" {
+  return type === "roll" || type === "stat";
+}
+
+function inlineResultTokenName(type: "roll" | "stat"): string {
+  return type === "roll" ? "trpg-roll" : "trpg-stat";
+}
+
 function encodeInlineResultBlock(block: ResultBlock): string {
   return encodeURIComponent(JSON.stringify(block));
 }
 
-function decodeInlineResultBlock(encoded: string): ResultBlock | null {
+function decodeInlineResultBlock(
+  encoded: string,
+  expectedType: "roll" | "stat",
+): ResultBlock | null {
   try {
     const parsed = JSON.parse(decodeURIComponent(encoded)) as Partial<ResultBlock>;
 
-    if (parsed.type !== "roll") {
+    if (parsed.type !== expectedType) {
       return null;
     }
 
     return {
-      id: String(parsed.id ?? "roll_unknown"),
-      type: "roll",
+      id: String(parsed.id ?? `${expectedType}_unknown`),
+      type: expectedType,
       createdAt: String(parsed.createdAt ?? new Date(0).toISOString()),
       commandText: String(parsed.commandText ?? ""),
       collapsed:
@@ -51,7 +62,7 @@ function inlineResultBlockNode(block: ResultBlock): JSONContent {
 
 function parseInlineMarkdown(markdown: string): JSONContent[] {
   const nodes: JSONContent[] = [];
-  const tokenPattern = /(\{\{trpg-roll:[^}]+\}\}|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
+  const tokenPattern = /(\{\{trpg-(roll|stat):[^}]+\}\}|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
@@ -61,9 +72,13 @@ function parseInlineMarkdown(markdown: string): JSONContent[] {
     }
 
     const token = match[0];
-    if (token.startsWith("{{trpg-roll:")) {
-      const encoded = token.slice("{{trpg-roll:".length, -2);
-      const block = decodeInlineResultBlock(encoded);
+    if (token.startsWith("{{trpg-roll:") || token.startsWith("{{trpg-stat:")) {
+      const type = match[2];
+      const tokenPrefix = `{{trpg-${type}:`;
+      const encoded = token.slice(tokenPrefix.length, -2);
+      const block = isInlineResultBlockType(type)
+        ? decodeInlineResultBlock(encoded, type)
+        : null;
 
       if (block) {
         nodes.push(inlineResultBlockNode(block));
@@ -270,11 +285,11 @@ function serializeInline(content: JSONContent[] = []): string {
       if (node.type === "inlineResultBlock") {
         const block = node.attrs?.block as ResultBlock | undefined;
 
-        if (!block || block.type !== "roll") {
+        if (!block || !isInlineResultBlockType(block.type)) {
           return "";
         }
 
-        return `{{trpg-roll:${encodeInlineResultBlock(block)}}}`;
+        return `{{${inlineResultTokenName(block.type)}:${encodeInlineResultBlock(block)}}}`;
       }
 
       if (node.type === "hardBreak") {

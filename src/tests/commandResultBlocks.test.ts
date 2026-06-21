@@ -4,11 +4,13 @@ import type {
   ParsedAskCommand,
   ParsedInvalidCommand,
   ParsedRollCommand,
+  ParsedStatCommand,
 } from "../commands/commandTypes";
 import {
   createAskCommandResultBlock,
   createInvalidCommandResultBlock,
   createRollCommandResultBlock,
+  createStatCommandResultBlock,
 } from "../editor/resultBlocks/createResultBlock";
 
 function payloadRecord(payload: unknown): Record<string, unknown> {
@@ -68,5 +70,33 @@ describe("command result blocks", () => {
     expect(payload.question).toBe("Is the guard asleep?");
     expect(payload.odds).toBe("likely");
     expect(payload.answer === "Yes" || payload.answer === "No").toBe(true);
+  });
+
+  it("creates a stat result block from a parsed /stat command", () => {
+    const command: ParsedStatCommand = {
+      type: "stat",
+      raw: "/stat Kael HP -4",
+      sheetName: "Kael",
+      statName: "HP",
+      delta: -4,
+    };
+
+    const block = createStatCommandResultBlock(command, {
+      ok: true,
+      sheetName: "Kael",
+      statName: "HP",
+      delta: -4,
+      beforeValue: 16,
+      afterValue: 12,
+    });
+    const payload = payloadRecord(block.payload);
+
+    expect(block.type).toBe("stat");
+    expect(block.commandText).toBe("/stat Kael HP -4");
+    expect(payload.sheet).toBe("Kael");
+    expect(payload.stat).toBe("HP");
+    expect(payload.delta).toBe(-4);
+    expect(payload.beforeValue).toBe(16);
+    expect(payload.afterValue).toBe(12);
   });
 });
