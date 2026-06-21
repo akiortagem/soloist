@@ -312,7 +312,8 @@ nav button.active,
 }
 
 .result-block-inline.result-block-roll,
-.result-block-inline.result-block-stat {
+.result-block-inline.result-block-stat,
+.result-block-inline.result-block-chaos {
   align-items: center;
   border-left-width: 1px;
   display: inline-flex;
@@ -356,6 +357,10 @@ nav button.active,
 
 .result-block-inline.result-block-stat {
   border-left-color: var(--color-success);
+}
+
+.result-block-inline.result-block-chaos {
+  border-left-color: var(--color-accent);
 }
 
 .result-block-roll:not(.result-block-inline) {

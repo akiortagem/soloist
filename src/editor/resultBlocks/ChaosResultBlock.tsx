@@ -5,10 +5,10 @@ export function ChaosResultBlock({ block }: ResultBlockViewProps) {
 
   return (
     <>
-      <strong>Chaos</strong>
+      <strong>CF :</strong>
       <span>
-        {formatPayloadValue(payload.before ?? "?")} to{" "}
-        {formatPayloadValue(payload.after ?? "?")}
+        {formatPayloadValue(payload.beforeValue ?? "?")} {"->"}{" "}
+        {formatPayloadValue(payload.afterValue ?? "?")}
       </span>
     </>
   );

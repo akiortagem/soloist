@@ -158,6 +158,35 @@ function parseStatArgs(argsText: string):
   };
 }
 
+function parseChaosArgs(argsText: string):
+  | { ok: true; delta: number }
+  | { ok: false; reason: string } {
+  const tokens = tokenizeArgs(argsText.trim());
+
+  if (tokens.length === 0) {
+    return { ok: false, reason: "Missing chaos delta" };
+  }
+
+  if (tokens.length > 1) {
+    return { ok: false, reason: "Chaos command accepts exactly one argument" };
+  }
+
+  const [deltaText] = tokens;
+
+  if (!/^[+-]/.test(deltaText)) {
+    return { ok: false, reason: "Chaos delta must include + or -" };
+  }
+
+  if (!/^[+-]\d+$/.test(deltaText)) {
+    return { ok: false, reason: "Chaos delta must be a signed integer" };
+  }
+
+  return {
+    ok: true,
+    delta: Number(deltaText),
+  };
+}
+
 export function parseCommand(raw: string): ParsedCommand {
   const trimmed = trimCommandInput(raw);
 
@@ -234,6 +263,25 @@ export function parseCommand(raw: string): ParsedCommand {
       sheetName: parsedStat.sheetName,
       statName: parsedStat.statName,
       delta: parsedStat.delta,
+    };
+  }
+
+  if (commandName === "chaos") {
+    const parsedChaos = parseChaosArgs(argsText);
+
+    if (!parsedChaos.ok) {
+      return {
+        type: "invalid",
+        raw,
+        commandName,
+        reason: parsedChaos.reason,
+      };
+    }
+
+    return {
+      type: "chaos",
+      raw,
+      delta: parsedChaos.delta,
     };
   }
 

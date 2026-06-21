@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type {
   ParsedAskCommand,
+  ParsedChaosCommand,
   ParsedInvalidCommand,
   ParsedRollCommand,
   ParsedStatCommand,
 } from "../commands/commandTypes";
 import {
   createAskCommandResultBlock,
+  createChaosCommandResultBlock,
   createInvalidCommandResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
@@ -98,5 +100,27 @@ describe("command result blocks", () => {
     expect(payload.delta).toBe(-4);
     expect(payload.beforeValue).toBe(16);
     expect(payload.afterValue).toBe(12);
+  });
+
+  it("creates a chaos result block from a parsed /chaos command", () => {
+    const command: ParsedChaosCommand = {
+      type: "chaos",
+      raw: "/chaos +1",
+      delta: 1,
+    };
+
+    const block = createChaosCommandResultBlock(command, {
+      ok: true,
+      delta: 1,
+      beforeValue: 4,
+      afterValue: 5,
+    });
+    const payload = payloadRecord(block.payload);
+
+    expect(block.type).toBe("chaos");
+    expect(block.commandText).toBe("/chaos +1");
+    expect(payload.delta).toBe(1);
+    expect(payload.beforeValue).toBe(4);
+    expect(payload.afterValue).toBe(5);
   });
 });

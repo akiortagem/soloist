@@ -263,10 +263,62 @@ describe("command parser foundation", () => {
     });
   });
 
-  it("identifies chaos commands", () => {
-    expect(parseCommand("/chaos +1")).toMatchObject({
-      type: "unknown",
+  it("parses /chaos with signed integer deltas", () => {
+    expect(parseCommand("/chaos +1")).toEqual({
+      type: "chaos",
+      raw: "/chaos +1",
+      delta: 1,
+    });
+    expect(parseCommand("/chaos -1")).toEqual({
+      type: "chaos",
+      raw: "/chaos -1",
+      delta: -1,
+    });
+    expect(parseCommand("/chaos +2")).toEqual({
+      type: "chaos",
+      raw: "/chaos +2",
+      delta: 2,
+    });
+    expect(parseCommand("/chaos -3")).toEqual({
+      type: "chaos",
+      raw: "/chaos -3",
+      delta: -3,
+    });
+  });
+
+  it("returns invalid when /chaos is missing a delta", () => {
+    expect(parseCommand("/chaos")).toEqual({
+      type: "invalid",
+      raw: "/chaos",
       commandName: "chaos",
+      reason: "Missing chaos delta",
+    });
+  });
+
+  it("returns invalid when /chaos delta does not include a sign", () => {
+    expect(parseCommand("/chaos 1")).toEqual({
+      type: "invalid",
+      raw: "/chaos 1",
+      commandName: "chaos",
+      reason: "Chaos delta must include + or -",
+    });
+  });
+
+  it("returns invalid when /chaos delta is not numeric", () => {
+    expect(parseCommand("/chaos nope")).toEqual({
+      type: "invalid",
+      raw: "/chaos nope",
+      commandName: "chaos",
+      reason: "Chaos delta must include + or -",
+    });
+  });
+
+  it("returns invalid when /chaos has extra arguments", () => {
+    expect(parseCommand("/chaos +1 now")).toEqual({
+      type: "invalid",
+      raw: "/chaos +1 now",
+      commandName: "chaos",
+      reason: "Chaos command accepts exactly one argument",
     });
   });
 });

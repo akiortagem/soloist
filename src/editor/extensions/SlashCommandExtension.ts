@@ -6,6 +6,7 @@ import type { ResultBlock } from "../../domain/domainTypes";
 import { appStore } from "../../state/appStore";
 import {
   createAskCommandResultBlock,
+  createChaosCommandResultBlock,
   createInvalidCommandResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
@@ -28,6 +29,11 @@ function createCommandResultBlock(commandText: string): ResultBlock {
           statName: parsed.statName,
           delta: parsed.delta,
         }),
+      );
+    case "chaos":
+      return createChaosCommandResultBlock(
+        parsed,
+        appStore.applyChaosDelta({ delta: parsed.delta }),
       );
     case "invalid":
       return createInvalidCommandResultBlock(parsed);
@@ -93,7 +99,11 @@ export const SlashCommandExtension = Extension.create({
 
         const commandText = textBeforeCursor.slice(commandStart);
         const resultBlock = createCommandResultBlock(commandText);
-        if (resultBlock.type === "roll" || resultBlock.type === "stat") {
+        if (
+          resultBlock.type === "roll" ||
+          resultBlock.type === "stat" ||
+          resultBlock.type === "chaos"
+        ) {
           const inlineResultNode = editor.schema.nodes.inlineResultBlock?.create({
             block: resultBlock,
           });

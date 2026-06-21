@@ -1,12 +1,13 @@
 import type {
   ParsedAskCommand,
+  ParsedChaosCommand,
   ParsedInvalidCommand,
   ParsedRollCommand,
   ParsedStatCommand,
   ParsedUnknownCommand,
 } from "../../commands/commandTypes";
 import type { ResultBlock } from "../../domain/domainTypes";
-import type { StatDeltaResult } from "../../state/appStore";
+import type { ChaosDeltaResult, StatDeltaResult } from "../../state/appStore";
 import { rollDice } from "../../dice/rollDice";
 import { getActiveOracleProvider } from "../../oracle/oracleRegistry";
 
@@ -122,6 +123,30 @@ export function createStatCommandResultBlock(
     payload: {
       sheet: result.sheetName,
       stat: result.statName,
+      delta: result.delta,
+      beforeValue: result.beforeValue,
+      afterValue: result.afterValue,
+    },
+  });
+}
+
+export function createChaosCommandResultBlock(
+  command: ParsedChaosCommand,
+  result: ChaosDeltaResult,
+): ResultBlock {
+  if (!result.ok) {
+    return createResultBlock("error", {
+      commandText: command.raw,
+      payload: {
+        commandName: "chaos",
+        reason: result.reason,
+      },
+    });
+  }
+
+  return createResultBlock("chaos", {
+    commandText: command.raw,
+    payload: {
       delta: result.delta,
       beforeValue: result.beforeValue,
       afterValue: result.afterValue,

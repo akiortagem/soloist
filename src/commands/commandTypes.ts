@@ -34,6 +34,7 @@ export type ParsedStatCommand = {
 
 export type ParsedChaosCommand = {
   type: "chaos";
+  raw: string;
   delta: number;
 };
 
