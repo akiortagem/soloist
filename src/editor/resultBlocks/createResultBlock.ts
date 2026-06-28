@@ -4,6 +4,7 @@ import type {
   ParsedInvalidCommand,
   ParsedRollCommand,
   ParsedStatCommand,
+  ParsedTrackerStatCommand,
   ParsedUnknownCommand,
 } from "../../commands/commandTypes";
 import type { ResultBlock } from "../../domain/domainTypes";
@@ -105,7 +106,7 @@ export function createAskCommandResultBlock(command: ParsedAskCommand): ResultBl
 }
 
 export function createStatCommandResultBlock(
-  command: ParsedStatCommand,
+  command: ParsedStatCommand | ParsedTrackerStatCommand,
   result: StatDeltaResult,
 ): ResultBlock {
   if (!result.ok) {
@@ -123,7 +124,7 @@ export function createStatCommandResultBlock(
     payload: {
       sheet: result.sheetName,
       stat: result.statName,
-      delta: result.delta,
+      delta: result.changeText ?? result.delta,
       beforeValue: result.beforeValue,
       afterValue: result.afterValue,
     },

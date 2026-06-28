@@ -11,16 +11,53 @@ import { createId } from "../persistence/id";
 
 export const CHARACTER_TEMPLATE_FIELD_TYPES = [
   "number",
+  "current_max_number",
   "text",
   "boolean",
   "longText",
 ] as const satisfies readonly CharacterTemplateField["type"][];
+
+function coerceNumberValue(value: unknown) {
+  const numericValue =
+    typeof value === "number" ? value : Number.parseFloat(String(value));
+
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function coerceNonNegativeNumberValue(value: unknown) {
+  return Math.max(0, coerceNumberValue(value));
+}
+
+function coerceCurrentMaxNumberValue(value: unknown) {
+  if (value && typeof value === "object") {
+    const candidate = value as { current?: unknown; max?: unknown };
+
+    return {
+      current: coerceNonNegativeNumberValue(candidate.current),
+      max: coerceNonNegativeNumberValue(candidate.max),
+    };
+  }
+
+  const numericValue = coerceNonNegativeNumberValue(value);
+
+  return {
+    current: numericValue,
+    max: numericValue,
+  };
+}
 
 export function getDefaultValueForTemplateField(
   type: CharacterTemplateField["type"],
 ) {
   if (type === "number") {
     return 0;
+  }
+
+  if (type === "current_max_number") {
+    return {
+      current: 0,
+      max: 0,
+    };
   }
 
   if (type === "boolean") {
@@ -32,12 +69,14 @@ export function getDefaultValueForTemplateField(
 
 export function coerceTemplateFieldDefaultValue(
   type: CharacterTemplateField["type"],
-  value: string | number | boolean,
+  value: unknown,
 ) {
   if (type === "number") {
-    const numericValue =
-      typeof value === "number" ? value : Number.parseFloat(String(value));
-    return Number.isFinite(numericValue) ? numericValue : 0;
+    return coerceNumberValue(value);
+  }
+
+  if (type === "current_max_number") {
+    return coerceCurrentMaxNumberValue(value);
   }
 
   if (type === "boolean") {
@@ -81,6 +120,32 @@ function createCharacterFieldFromTemplateField(
     minValue: field.minValue,
     group: field.group ?? group,
   };
+}
+
+export function normalizeCharacterField(field: CharacterField): CharacterField {
+  const minValue =
+    field.type === "number" && typeof field.minValue === "number"
+      ? field.minValue
+      : undefined;
+  const maxValue =
+    field.type === "number" && typeof field.maxValue === "number"
+      ? field.maxValue
+      : undefined;
+
+  return {
+    id: field.id,
+    templateFieldId: field.templateFieldId,
+    name: field.name.trim() || "Untitled field",
+    type: field.type,
+    value: coerceTemplateFieldDefaultValue(field.type, field.value),
+    minValue,
+    maxValue,
+    group: field.group?.trim() || undefined,
+  };
+}
+
+export function normalizeCharacterFields(fields: CharacterField[]) {
+  return fields.map(normalizeCharacterField);
 }
 
 export function createTemplateSeparator(
@@ -281,7 +346,7 @@ export function createFieldsFromTemplate(
   }
 
   appendItems(normalizeTemplateItems(items));
-  return fields;
+  return normalizeCharacterFields(fields);
 }
 
 export function syncFieldsWithTemplate(
@@ -289,10 +354,11 @@ export function syncFieldsWithTemplate(
   templateItems: CharacterTemplateItem[],
 ): CharacterField[] {
   const templateFields = createFieldsFromTemplate(templateItems);
+  const normalizedSheetFields = normalizeCharacterFields(sheetFields);
   const existingByTemplateId = new Map<string, CharacterField>();
   const existingByName = new Map<string, CharacterField>();
 
-  for (const field of sheetFields) {
+  for (const field of normalizedSheetFields) {
     if (field.templateFieldId) {
       existingByTemplateId.set(field.templateFieldId, field);
     }
@@ -300,7 +366,7 @@ export function syncFieldsWithTemplate(
     existingByName.set(field.name.trim().toLocaleLowerCase(), field);
   }
 
-  const syncedFields = sheetFields.map((field) => {
+  const syncedFields = normalizedSheetFields.map((field) => {
     if (field.templateFieldId) {
       return field;
     }

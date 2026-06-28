@@ -158,6 +158,86 @@ function parseStatArgs(argsText: string):
   };
 }
 
+function parseTrackerStatArgs(argsText: string):
+  | {
+      ok: true;
+      characterName: string;
+      statName: string;
+      mode: "increment" | "absolute";
+      value: number;
+    }
+  | { ok: false; reason: string } {
+  let remaining = argsText.trim();
+
+  if (!/^tracker(?:\s|$)/i.test(remaining)) {
+    return { ok: false, reason: "Tracker stat command must start with tracker" };
+  }
+
+  remaining = remaining.replace(/^tracker/i, "").trim();
+
+  if (remaining.length === 0) {
+    return { ok: false, reason: "Missing tracker character name" };
+  }
+
+  let characterName = "";
+
+  if (remaining.startsWith('"')) {
+    const parsedCharacterName = parseQuotedString(remaining);
+
+    if (parsedCharacterName.error) {
+      return { ok: false, reason: parsedCharacterName.error };
+    }
+
+    characterName = parsedCharacterName.value ?? "";
+    remaining = parsedCharacterName.rest.trim();
+  } else {
+    const firstToken = /^(\S+)(?:\s+([\s\S]*))?$/.exec(remaining);
+
+    if (!firstToken) {
+      return { ok: false, reason: "Missing tracker character name" };
+    }
+
+    characterName = firstToken[1];
+    remaining = (firstToken[2] ?? "").trim();
+  }
+
+  if (characterName.trim().length === 0) {
+    return { ok: false, reason: "Missing tracker character name" };
+  }
+
+  const tokens = tokenizeArgs(remaining);
+
+  if (tokens.length === 0 || tokens[0].trim().length === 0) {
+    return { ok: false, reason: "Missing tracker stat name" };
+  }
+
+  if (tokens.length === 1) {
+    return { ok: false, reason: "Missing tracker stat value" };
+  }
+
+  if (tokens.length > 2) {
+    return { ok: false, reason: "Tracker stat names with spaces are not supported" };
+  }
+
+  const [statName, valueText] = tokens;
+
+  if (/\s/.test(statName)) {
+    return { ok: false, reason: "Tracker stat names with spaces are not supported" };
+  }
+
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(valueText)) {
+    return { ok: false, reason: "Tracker stat value must be numeric" };
+  }
+
+  return {
+    ok: true,
+    characterName,
+    statName,
+    mode: /^[+-]/.test(valueText) ? "increment" : "absolute",
+    value: Number(valueText),
+  };
+}
+
 function parseChaosArgs(argsText: string):
   | { ok: true; delta: number }
   | { ok: false; reason: string } {
@@ -246,6 +326,28 @@ export function parseCommand(raw: string): ParsedCommand {
   }
 
   if (commandName === "stat") {
+    if (/^tracker(?:\s|$)/i.test(argsText.trim())) {
+      const parsedTrackerStat = parseTrackerStatArgs(argsText);
+
+      if (!parsedTrackerStat.ok) {
+        return {
+          type: "invalid",
+          raw,
+          commandName,
+          reason: parsedTrackerStat.reason,
+        };
+      }
+
+      return {
+        type: "trackerStat",
+        raw,
+        characterName: parsedTrackerStat.characterName,
+        statName: parsedTrackerStat.statName,
+        mode: parsedTrackerStat.mode,
+        value: parsedTrackerStat.value,
+      };
+    }
+
     const parsedStat = parseStatArgs(argsText);
 
     if (!parsedStat.ok) {
@@ -298,6 +400,49 @@ export function parseCommand(raw: string): ParsedCommand {
     return {
       type: "scene",
       raw,
+    };
+  }
+
+  if (commandName === "combat") {
+    const tokens = tokenizeArgs(argsText);
+
+    if (tokens.length === 0) {
+      return {
+        type: "combat",
+        raw,
+        action: "begin",
+      };
+    }
+
+    if (tokens.length > 1) {
+      return {
+        type: "invalid",
+        raw,
+        commandName,
+        reason: "Combat command accepts one action",
+      };
+    }
+
+    const action = tokens[0].toLocaleLowerCase();
+
+    if (
+      action === "begin" ||
+      action === "turn" ||
+      action === "block" ||
+      action === "end"
+    ) {
+      return {
+        type: "combat",
+        raw,
+        action,
+      };
+    }
+
+    return {
+      type: "invalid",
+      raw,
+      commandName,
+      reason: "Unknown combat action",
     };
   }
 

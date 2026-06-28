@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CharacterSheetPanel } from "../characterSheets/CharacterSheetPanel";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
+import { CombatPanel } from "../combat/CombatPanel";
 import { Editor } from "../editor/Editor";
 import { appStore, useAppStore } from "../state/appStore";
 
@@ -15,17 +16,30 @@ export function App() {
   const {
     activeSession,
     chaosFactor,
-    combatState,
     isCreatingSession,
     isLoadingSessions,
     route,
     sessions,
+    rightPanelCloseRequest,
+    rightPanelOpenRequest,
   } = useAppStore();
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
 
   useEffect(() => {
     void appStore.loadSessions();
   }, []);
+
+  useEffect(() => {
+    if (rightPanelOpenRequest > 0) {
+      setIsRightPanelOpen(true);
+    }
+  }, [rightPanelOpenRequest]);
+
+  useEffect(() => {
+    if (rightPanelCloseRequest > 0) {
+      setIsRightPanelOpen(false);
+    }
+  }, [rightPanelCloseRequest]);
 
   return (
     <main className="app-shell">
@@ -102,14 +116,7 @@ export function App() {
 
         {isRightPanelOpen ? (
           <aside className="right-panel" aria-label="Session tools">
-            <section>
-              <h2>Combat Tracker</h2>
-              <p>
-                {combatState?.active
-                  ? `${combatState.combatants.length} combatants`
-                  : "No active combat."}
-              </p>
-            </section>
+            <CombatPanel />
 
             <section>
               <h2>Oracle Settings</h2>

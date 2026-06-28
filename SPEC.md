@@ -585,10 +585,8 @@ Use the demo oracle by default and provide an extensible provider architecture s
 ### Syntax
 
 ```md
-/scene "I visit the adventurer's guild"
+/scene
 ```
-
-Quotes are supported but not required.
 
 ### Scope
 
@@ -596,8 +594,8 @@ Use medium scene handling for MVP.
 
 The app should:
 
-1. Insert a scene heading/scaffold.
-2. Record the initial expected scene prompt.
+1. Insert a scene box.
+2. WYSIWYG expected scene, with enter to submit.
 3. Roll scene setup/check.
 4. Use active oracle provider to interpret the result.
 5. Show Chaos Factor.

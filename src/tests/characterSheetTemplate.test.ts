@@ -11,6 +11,18 @@ describe("character sheet template logic", () => {
   test("coerces default values by field type", () => {
     expect(coerceTemplateFieldDefaultValue("number", "12")).toBe(12);
     expect(coerceTemplateFieldDefaultValue("number", "abc")).toBe(0);
+    expect(
+      coerceTemplateFieldDefaultValue("current_max_number", {
+        current: "7",
+        max: "10",
+      }),
+    ).toEqual({ current: 7, max: 10 });
+    expect(
+      coerceTemplateFieldDefaultValue("current_max_number", {
+        current: -1,
+        max: "abc",
+      }),
+    ).toEqual({ current: 0, max: 0 });
     expect(coerceTemplateFieldDefaultValue("boolean", "true")).toBe(true);
     expect(coerceTemplateFieldDefaultValue("boolean", false)).toBe(false);
     expect(coerceTemplateFieldDefaultValue("text", 42)).toBe("42");
@@ -130,6 +142,31 @@ describe("character sheet template logic", () => {
       templateFieldId: "field_strength",
       value: 2,
       group: "Stats",
+    });
+  });
+
+  test("creates current/max number sheet fields from templates", () => {
+    const sheetFields = createFieldsFromTemplate([
+      {
+        id: "field_hp",
+        kind: "field" as const,
+        name: "HP",
+        type: "current_max_number" as const,
+        defaultValue: {
+          current: 7,
+          max: 10,
+        },
+      },
+    ]);
+
+    expect(sheetFields[0]).toMatchObject({
+      name: "HP",
+      templateFieldId: "field_hp",
+      type: "current_max_number",
+      value: {
+        current: 7,
+        max: 10,
+      },
     });
   });
 });

@@ -17,12 +17,30 @@ export type Document = {
   updatedAt: string;
 };
 
+export type CurrentMaxNumberValue = {
+  current: number;
+  max: number;
+};
+
+export type CharacterFieldType =
+  | "number"
+  | "current_max_number"
+  | "text"
+  | "boolean"
+  | "longText";
+
+export type CharacterFieldValue =
+  | string
+  | number
+  | boolean
+  | CurrentMaxNumberValue;
+
 export type CharacterField = {
   id: string;
   templateFieldId?: string;
   name: string;
-  type: "number" | "text" | "boolean" | "longText";
-  value: string | number | boolean;
+  type: CharacterFieldType;
+  value: CharacterFieldValue;
   maxValue?: number;
   minValue?: number;
   group?: string;
@@ -43,8 +61,8 @@ export type CharacterTemplateField = {
   id: string;
   kind?: "field";
   name: string;
-  type: "number" | "text" | "boolean" | "longText";
-  defaultValue: string | number | boolean;
+  type: CharacterFieldType;
+  defaultValue: CharacterFieldValue;
   maxValue?: number;
   minValue?: number;
   group?: string;
@@ -88,12 +106,41 @@ export type CharacterSheetTemplate = {
   updatedAt: string;
 };
 
+export type CombatantTrackedField =
+  | {
+      id: string;
+      name: string;
+      type: "sheet";
+      characterFieldId: string;
+    }
+  | {
+      id: string;
+      name: string;
+      type: "boolean";
+      value: boolean;
+    }
+  | {
+      id: string;
+      name: string;
+      type: "number";
+      value: number;
+      maxValue: number;
+      minValue: number;
+    }
+  | {
+      id: string;
+      name: string;
+      type: "text";
+      value: string;
+    };
+
 export type Combatant = {
   id: string;
   name: string;
-  initiative: number;
+  turnOrder: number;
   characterSheetId?: string;
   notes?: string;
+  fields?: CombatantTrackedField[];
 };
 
 export type CombatState = {
@@ -102,6 +149,7 @@ export type CombatState = {
   active: boolean;
   combatants: Combatant[];
   currentTurnIndex: number;
+  roundNumber: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -128,5 +176,23 @@ export type SceneContainerPayload = {
     explanation: string;
   };
   oracleError?: string;
+  collapsed?: boolean;
+};
+
+export type CombatSpacePayload = {
+  id: string;
+  active: boolean;
+  ended: boolean;
+  roundNumber: number;
+  currentTurnIndex: number;
+};
+
+export type CombatTurnBlockPayload = {
+  id: string;
+  combatantId: string;
+  combatantName: string;
+  roundNumber: number;
+  turnIndex: number;
+  current: boolean;
   collapsed?: boolean;
 };

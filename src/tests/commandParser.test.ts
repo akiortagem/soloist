@@ -180,6 +180,49 @@ describe("command parser foundation", () => {
     });
   });
 
+  it("parses /combat actions", () => {
+    expect(parseCommand("/combat")).toEqual({
+      type: "combat",
+      raw: "/combat",
+      action: "begin",
+    });
+    expect(parseCommand("/combat begin")).toEqual({
+      type: "combat",
+      raw: "/combat begin",
+      action: "begin",
+    });
+    expect(parseCommand("/combat turn")).toEqual({
+      type: "combat",
+      raw: "/combat turn",
+      action: "turn",
+    });
+    expect(parseCommand("/combat block")).toEqual({
+      type: "combat",
+      raw: "/combat block",
+      action: "block",
+    });
+    expect(parseCommand("/combat end")).toEqual({
+      type: "combat",
+      raw: "/combat end",
+      action: "end",
+    });
+  });
+
+  it("returns invalid for unsupported /combat actions", () => {
+    expect(parseCommand("/combat flee")).toEqual({
+      type: "invalid",
+      raw: "/combat flee",
+      commandName: "combat",
+      reason: "Unknown combat action",
+    });
+    expect(parseCommand("/combat turn now")).toEqual({
+      type: "invalid",
+      raw: "/combat turn now",
+      commandName: "combat",
+      reason: "Combat command accepts one action",
+    });
+  });
+
   it("parses /stat with an unquoted sheet name and negative delta", () => {
     expect(parseCommand("/stat Kael HP -4")).toEqual({
       type: "stat",
@@ -214,6 +257,40 @@ describe("command parser foundation", () => {
       sheetName: "Kael",
       statName: "Gold",
       delta: 50,
+    });
+  });
+
+  it("parses /stat tracker for impromptu tracker stats", () => {
+    expect(parseCommand("/stat tracker Bandit HP -4")).toEqual({
+      type: "trackerStat",
+      raw: "/stat tracker Bandit HP -4",
+      characterName: "Bandit",
+      statName: "HP",
+      mode: "increment",
+      value: -4,
+    });
+    expect(parseCommand('/stat tracker "Bandit Captain" HP 12')).toEqual({
+      type: "trackerStat",
+      raw: '/stat tracker "Bandit Captain" HP 12',
+      characterName: "Bandit Captain",
+      statName: "HP",
+      mode: "absolute",
+      value: 12,
+    });
+  });
+
+  it("returns invalid when /stat tracker is missing required arguments", () => {
+    expect(parseCommand("/stat tracker")).toEqual({
+      type: "invalid",
+      raw: "/stat tracker",
+      commandName: "stat",
+      reason: "Missing tracker character name",
+    });
+    expect(parseCommand("/stat tracker Bandit HP nope")).toEqual({
+      type: "invalid",
+      raw: "/stat tracker Bandit HP nope",
+      commandName: "stat",
+      reason: "Tracker stat value must be numeric",
     });
   });
 

@@ -204,4 +204,76 @@ describe("editor markdown persistence", () => {
     });
     expect(tiptapJsonToMarkdown(json)).toBe(markdown);
   });
+
+  it("round-trips combat spaces with editable turn blocks", () => {
+    const combatPayload = {
+      id: "combat_abc123",
+      active: true,
+      ended: false,
+      roundNumber: 2,
+      currentTurnIndex: 1,
+    };
+    const firstTurn = {
+      id: "combat_turn_first",
+      combatantId: "char_1",
+      combatantName: "Char 1",
+      roundNumber: 1,
+      turnIndex: 0,
+      current: false,
+      collapsed: true,
+    };
+    const secondTurn = {
+      id: "combat_turn_second",
+      combatantId: "char_2",
+      combatantName: "Char 2",
+      roundNumber: 2,
+      turnIndex: 1,
+      current: true,
+    };
+    const markdown = [
+      "Before",
+      "",
+      ":::trpg-combat-space",
+      JSON.stringify(combatPayload),
+      ":::",
+      ":::trpg-combat-turn",
+      JSON.stringify(firstTurn),
+      ":::",
+      "Char 1 attacks.",
+      ":::trpg-combat-turn-end",
+      "",
+      "Between-turn table chatter.",
+      "",
+      ":::trpg-combat-turn",
+      JSON.stringify(secondTurn),
+      ":::",
+      "Char 2 answers.",
+      ":::trpg-combat-turn-end",
+      ":::trpg-combat-space-end",
+      "",
+      "After",
+    ].join("\n");
+
+    const json = markdownToTiptapJson(markdown);
+
+    expect(json.content?.[1]).toMatchObject({
+      type: "combatSpace",
+      attrs: { payload: combatPayload },
+      content: [
+        {
+          type: "combatTurnBlock",
+          attrs: { payload: firstTurn },
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Between-turn table chatter." }],
+        },
+        {
+          type: "combatTurnBlock",
+          attrs: { payload: secondTurn },
+        },
+      ],
+    });
+    expect(tiptapJsonToMarkdown(json)).toBe(markdown);
+  });
 });

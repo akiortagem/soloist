@@ -3,6 +3,8 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 import { appStore, useAppStore } from "../state/appStore";
 import { InlineResultBlockExtension } from "./extensions/InlineResultBlockExtension";
+import { CombatSpaceExtension } from "./extensions/CombatSpaceExtension";
+import { CombatTurnBlockExtension } from "./extensions/CombatTurnBlockExtension";
 import { ResultBlockExtension } from "./extensions/ResultBlockExtension";
 import { SceneContainerExtension } from "./extensions/SceneContainerExtension";
 import { SlashCommandExtension } from "./extensions/SlashCommandExtension";
@@ -69,6 +71,8 @@ function SessionDocumentEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit,
+      CombatTurnBlockExtension,
+      CombatSpaceExtension,
       ResultBlockExtension,
       InlineResultBlockExtension,
       SceneContainerExtension,

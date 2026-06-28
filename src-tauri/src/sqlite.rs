@@ -124,5 +124,11 @@ pub fn migrations() -> Vec<Migration> {
             sql: "ALTER TABLE character_sheets ADD COLUMN template_name TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 12,
+            description: "add_combat_round_number",
+            sql: "ALTER TABLE combat_states ADD COLUMN round_number INTEGER NOT NULL DEFAULT 1;",
+            kind: MigrationKind::Up,
+        },
     ]
 }

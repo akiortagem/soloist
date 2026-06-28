@@ -3,15 +3,24 @@ import type {
   CharacterSheet,
   CharacterSheetTemplate,
   CharacterTemplateItem,
+  Combatant,
+  CombatantTrackedField,
   CombatState,
   Document,
   Session,
 } from "../domain/domainTypes";
 import {
   createFieldsFromTemplate,
+  normalizeCharacterFields,
   normalizeTemplateItems,
   syncFieldsWithTemplate,
 } from "../characterSheets/characterSheetTemplateLogic";
+import {
+  getNextTurnIndex,
+  getNextRoundNumber,
+  getPreviousTurnIndex,
+  normalizeCombatState,
+} from "../combat/combatLogic";
 import { createRepositories } from "../persistence/sessionRepository";
 
 export type AppRoute =
@@ -41,9 +50,65 @@ export type AppState = {
   persistenceMessage: string;
   persistenceError?: string;
   documentSaveState: "idle" | "pending" | "saved" | "error";
+  rightPanelOpenRequest: number;
+  rightPanelCloseRequest: number;
 };
 
 const DEFAULT_CHAOS_FACTOR = 5;
+const MAX_COMBATANT_FIELDS = 3;
+const MAX_COMBAT_TEXT_LENGTH = 15;
+
+function createClientId(prefix: string) {
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function sanitizeCombatantField(
+  field: CombatantTrackedField,
+): CombatantTrackedField {
+  if (field.type !== "text") {
+    return field;
+  }
+
+  return {
+    ...field,
+    value: field.value.slice(0, MAX_COMBAT_TEXT_LENGTH),
+  };
+}
+
+function sanitizeCombatant(combatant: Combatant): Combatant {
+  return {
+    ...combatant,
+    name: combatant.name.trim() || "Unnamed",
+    fields: combatant.fields
+      ?.slice(0, MAX_COMBATANT_FIELDS)
+      .map(sanitizeCombatantField),
+  };
+}
+
+function normalizeLookupName(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function createUniqueCombatantName(name: string, combatants: Combatant[]) {
+  const baseName = name.trim() || "Unnamed";
+  const usedNames = new Set(
+    combatants.map((combatant) => normalizeLookupName(combatant.name)),
+  );
+
+  if (!usedNames.has(normalizeLookupName(baseName))) {
+    return baseName;
+  }
+
+  for (let suffix = 2; suffix < 10000; suffix += 1) {
+    const candidate = `${baseName} ${suffix}`;
+
+    if (!usedNames.has(normalizeLookupName(candidate))) {
+      return candidate;
+    }
+  }
+
+  return `${baseName} ${Date.now().toString(36)}`;
+}
 
 export type StatDeltaResult =
   | {
@@ -51,6 +116,7 @@ export type StatDeltaResult =
       sheetName: string;
       statName: string;
       delta: number;
+      changeText?: string;
       beforeValue: number;
       afterValue: number;
     }
@@ -88,6 +154,8 @@ const initialState: AppState = {
   isSavingTemplate: false,
   persistenceMessage: "Opening local database...",
   documentSaveState: "idle",
+  rightPanelOpenRequest: 0,
+  rightPanelCloseRequest: 0,
 };
 
 let state = initialState;
@@ -125,9 +193,13 @@ async function loadActiveSessionData(activeSession: Session | null) {
       sessionId: activeSession.id,
       title: activeSession.name,
     }));
-  const sheets = await repositories.characterSheets.listBySessionId(
+  const loadedSheets = await repositories.characterSheets.listBySessionId(
     activeSession.id,
   );
+  const sheets = loadedSheets.map((sheet) => ({
+    ...sheet,
+    fields: normalizeCharacterFields(sheet.fields),
+  }));
   const activeCharacterSheet =
     sheets.find((sheet) => sheet.id === activeSession.activeCharacterSheetId) ??
     sheets[0] ??
@@ -138,7 +210,7 @@ async function loadActiveSessionData(activeSession: Session | null) {
     activeDocument: document,
     characterSheets: sheets,
     activeCharacterSheet,
-    combatState,
+    combatState: combatState ? normalizeCombatState(combatState) : null,
     chaosFactor: activeSession.chaosFactor,
   });
 }
@@ -155,6 +227,14 @@ export const appStore = {
 
   setRoute(route: AppRoute) {
     setState({ route });
+  },
+
+  requestRightPanelOpen() {
+    setState({ rightPanelOpenRequest: state.rightPanelOpenRequest + 1 });
+  },
+
+  requestRightPanelClose() {
+    setState({ rightPanelCloseRequest: state.rightPanelCloseRequest + 1 });
   },
 
   async loadSessions() {
@@ -524,6 +604,80 @@ export const appStore = {
     return activeCharacterSheet;
   },
 
+  async updateCharacterSheetField(
+    sheetId: string,
+    fieldId: string,
+    value: CharacterSheet["fields"][number]["value"],
+  ) {
+    const sheet =
+      state.characterSheets.find((candidate) => candidate.id === sheetId) ??
+      null;
+
+    if (!sheet) {
+      return null;
+    }
+
+    const fields = normalizeCharacterFields(
+      sheet.fields.map((field) =>
+        field.id === fieldId ? { ...field, value } : field,
+      ),
+    );
+    const updatedSheet: CharacterSheet = {
+      ...sheet,
+      fields,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setState({
+      activeCharacterSheet:
+        state.activeCharacterSheet?.id === updatedSheet.id
+          ? updatedSheet
+          : state.activeCharacterSheet,
+      characterSheets: state.characterSheets.map((candidate) =>
+        candidate.id === updatedSheet.id ? updatedSheet : candidate,
+      ),
+      persistenceError: undefined,
+      persistenceMessage: `Saved sheet ${updatedSheet.name}.`,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      const savedSheet = await repositories.characterSheets.update({
+        id: updatedSheet.id,
+        fields,
+      });
+
+      if (savedSheet) {
+        const normalizedSavedSheet = {
+          ...savedSheet,
+          fields: normalizeCharacterFields(savedSheet.fields),
+        };
+
+        setState({
+          activeCharacterSheet:
+            state.activeCharacterSheet?.id === normalizedSavedSheet.id
+              ? normalizedSavedSheet
+              : state.activeCharacterSheet,
+          characterSheets: state.characterSheets.map((candidate) =>
+            candidate.id === normalizedSavedSheet.id
+              ? normalizedSavedSheet
+              : candidate,
+          ),
+        });
+
+        return normalizedSavedSheet;
+      }
+
+      return updatedSheet;
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Sheet field update failed.",
+      });
+      return null;
+    }
+  },
+
   applyStatDelta(input: {
     sheetName: string;
     statName: string;
@@ -554,6 +708,73 @@ export const appStore = {
       return {
         ok: false,
         reason: `Stat "${input.statName}" was not found on ${sheet.name}`,
+      };
+    }
+
+    if (field.type === "current_max_number") {
+      const value =
+        field.value && typeof field.value === "object"
+          ? (field.value as { current?: unknown; max?: unknown })
+          : {};
+      const beforeValue =
+        typeof value.current === "number" && Number.isFinite(value.current)
+          ? Math.max(0, value.current)
+          : 0;
+      const max =
+        typeof value.max === "number" && Number.isFinite(value.max)
+          ? Math.max(0, value.max)
+          : 0;
+      const afterValue = Math.max(0, beforeValue + input.delta);
+      const updatedSheet: CharacterSheet = {
+        ...sheet,
+        fields: sheet.fields.map((candidate) =>
+          candidate.id === field.id
+            ? {
+                ...candidate,
+                value: {
+                  current: afterValue,
+                  max,
+                },
+              }
+            : candidate,
+        ),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setState({
+        activeCharacterSheet:
+          state.activeCharacterSheet?.id === updatedSheet.id
+            ? updatedSheet
+            : state.activeCharacterSheet,
+        characterSheets: state.characterSheets.map((candidate) =>
+          candidate.id === updatedSheet.id ? updatedSheet : candidate,
+        ),
+        persistenceError: undefined,
+        persistenceMessage: `Updated ${updatedSheet.name} ${field.name}.`,
+      });
+
+      void createRepositories()
+        .then((repositories) =>
+          repositories.characterSheets.update({
+            id: updatedSheet.id,
+            fields: updatedSheet.fields,
+          }),
+        )
+        .catch((error) => {
+          setState({
+            persistenceError:
+              error instanceof Error ? error.message : String(error),
+            persistenceMessage: "Stat update failed.",
+          });
+        });
+
+      return {
+        ok: true,
+        sheetName: updatedSheet.name,
+        statName: field.name,
+        delta: input.delta,
+        beforeValue,
+        afterValue,
       };
     }
 
@@ -610,6 +831,101 @@ export const appStore = {
       sheetName: updatedSheet.name,
       statName: field.name,
       delta: input.delta,
+      beforeValue,
+      afterValue,
+    };
+  },
+
+  applyTrackerStatChange(input: {
+    characterName: string;
+    statName: string;
+    mode: "increment" | "absolute";
+    value: number;
+  }): StatDeltaResult {
+    if (!state.combatState) {
+      return {
+        ok: false,
+        reason: "No combat tracker",
+      };
+    }
+
+    const normalizedCharacterName = normalizeLookupName(input.characterName);
+    const combatant =
+      state.combatState.combatants.find(
+        (candidate) =>
+          normalizeLookupName(candidate.name) === normalizedCharacterName,
+      ) ?? null;
+
+    if (!combatant) {
+      return {
+        ok: false,
+        reason: `Tracker character "${input.characterName}" was not found`,
+      };
+    }
+
+    if (combatant.characterSheetId) {
+      return {
+        ok: false,
+        reason: `${combatant.name} is linked to a character sheet; use /stat without tracker`,
+      };
+    }
+
+    const normalizedStatName = normalizeLookupName(input.statName);
+    const field =
+      combatant.fields?.find(
+        (candidate) =>
+          candidate.type === "number" &&
+          normalizeLookupName(candidate.name) === normalizedStatName,
+      ) ?? null;
+
+    if (!field || field.type !== "number") {
+      return {
+        ok: false,
+        reason: `Numeric tracker stat "${input.statName}" was not found on ${combatant.name}`,
+      };
+    }
+
+    const beforeValue = field.value;
+    const unclampedAfterValue =
+      input.mode === "increment" ? beforeValue + input.value : input.value;
+    const afterValue = Math.min(
+      field.maxValue,
+      Math.max(field.minValue, unclampedAfterValue),
+    );
+    const delta = afterValue - beforeValue;
+    const updatedCombatant: Combatant = {
+      ...combatant,
+      fields: (combatant.fields ?? []).map((candidate) =>
+        candidate.id === field.id
+          ? {
+              ...field,
+              value: afterValue,
+            }
+          : candidate,
+      ),
+    };
+    const nextState = normalizeCombatState({
+      ...state.combatState,
+      combatants: state.combatState.combatants.map((candidate) =>
+        candidate.id === combatant.id ? updatedCombatant : candidate,
+      ),
+      updatedAt: new Date().toISOString(),
+    });
+
+    void this.saveCombatState({
+      active: nextState.active,
+      combatants: nextState.combatants,
+      currentTurnIndex: nextState.currentTurnIndex,
+      roundNumber: nextState.roundNumber,
+    });
+
+    return {
+      ok: true,
+      sheetName: combatant.name,
+      statName: field.name,
+      delta,
+      changeText:
+        input.mode === "absolute" ? `=${input.value}` : String(input.value),
       beforeValue,
       afterValue,
     };
@@ -821,19 +1137,233 @@ export const appStore = {
     active?: boolean;
     combatants?: CombatState["combatants"];
     currentTurnIndex?: number;
+    roundNumber?: number;
   }) {
     if (!state.activeSession) {
       return null;
     }
 
     const repositories = await createRepositories();
-    const combatState = await repositories.combat.upsert({
+    const combatState = normalizeCombatState(
+      await repositories.combat.upsert({
       sessionId: state.activeSession.id,
       ...input,
+      }),
+    );
+
+    setState({
+      combatState,
+      persistenceError: undefined,
+      persistenceMessage: "Combat tracker saved.",
+    });
+    return combatState;
+  },
+
+  async startCombat() {
+    if (!state.activeSession) {
+      return null;
+    }
+
+    return this.saveCombatState({
+      active: true,
+      combatants: state.combatState?.combatants ?? [],
+      currentTurnIndex: state.combatState?.currentTurnIndex ?? 0,
+      roundNumber: state.combatState?.roundNumber ?? 1,
+    });
+  },
+
+  async addCombatant(
+    input: Omit<Combatant, "id"> & {
+      id?: string;
+    },
+  ) {
+    if (!state.activeSession) {
+      return null;
+    }
+
+    const currentCombatState =
+      state.combatState ??
+      (await this.saveCombatState({
+        active: true,
+        combatants: [],
+        currentTurnIndex: 0,
+      }));
+
+    if (!currentCombatState) {
+      return null;
+    }
+
+    const combatant = sanitizeCombatant({
+      id: input.id ?? createClientId("combatant"),
+      name: createUniqueCombatantName(
+        input.name.trim() || "Unnamed",
+        currentCombatState.combatants,
+      ),
+      turnOrder: input.turnOrder,
+      characterSheetId: input.characterSheetId,
+      notes: input.notes,
+      fields: input.fields ?? [],
+    });
+    const combatants = [...currentCombatState.combatants];
+    const insertIndex = Math.min(
+      Math.max(combatant.turnOrder - 1, 0),
+      combatants.length,
+    );
+    combatants.splice(insertIndex, 0, combatant);
+
+    const nextState = normalizeCombatState({
+      ...currentCombatState,
+      active: true,
+      combatants: combatants.map((candidate, index) => ({
+        ...candidate,
+        turnOrder: index + 1,
+      })),
+      updatedAt: new Date().toISOString(),
     });
 
-    setState({ combatState });
-    return combatState;
+    return this.saveCombatState({
+      active: nextState.active,
+      combatants: nextState.combatants,
+      currentTurnIndex: nextState.currentTurnIndex,
+    });
+  },
+
+  async updateCombatant(combatant: Combatant) {
+    if (!state.combatState) {
+      return null;
+    }
+
+    const nextState = normalizeCombatState({
+      ...state.combatState,
+      combatants: state.combatState.combatants.map((candidate) =>
+        candidate.id === combatant.id
+          ? sanitizeCombatant(combatant)
+          : candidate,
+      ),
+      updatedAt: new Date().toISOString(),
+    });
+
+    return this.saveCombatState({
+      active: nextState.active,
+      combatants: nextState.combatants,
+      currentTurnIndex: nextState.currentTurnIndex,
+    });
+  },
+
+  async removeCombatant(combatantId: string) {
+    if (!state.combatState) {
+      return null;
+    }
+
+    const activeCombatantId =
+      state.combatState.combatants[state.combatState.currentTurnIndex]?.id;
+    const combatants = state.combatState.combatants
+      .filter((combatant) => combatant.id !== combatantId)
+      .map((combatant, index) => ({
+        ...combatant,
+        turnOrder: index + 1,
+      }));
+    const currentTurnIndex =
+      activeCombatantId && activeCombatantId !== combatantId
+        ? Math.max(
+            0,
+            combatants.findIndex((combatant) => combatant.id === activeCombatantId),
+          )
+        : Math.min(state.combatState.currentTurnIndex, combatants.length - 1);
+    const nextState = normalizeCombatState({
+      ...state.combatState,
+      combatants,
+      currentTurnIndex: Math.max(0, currentTurnIndex),
+      updatedAt: new Date().toISOString(),
+    });
+
+    return this.saveCombatState({
+      active: nextState.active,
+      combatants: nextState.combatants,
+      currentTurnIndex: nextState.currentTurnIndex,
+    });
+  },
+
+  async moveCombatantTurnOrder(
+    combatantId: string,
+    direction: "up" | "down",
+  ) {
+    if (!state.combatState) {
+      return null;
+    }
+
+    const activeCombatantId =
+      state.combatState.combatants[state.combatState.currentTurnIndex]?.id;
+    const combatants = [...state.combatState.combatants];
+    const currentIndex = combatants.findIndex(
+      (combatant) => combatant.id === combatantId,
+    );
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+    if (
+      currentIndex < 0 ||
+      targetIndex < 0 ||
+      targetIndex >= combatants.length
+    ) {
+      return state.combatState;
+    }
+
+    const movingCombatant = combatants[currentIndex];
+    combatants[currentIndex] = combatants[targetIndex];
+    combatants[targetIndex] = movingCombatant;
+
+    const renumberedCombatants = combatants.map((combatant, index) => ({
+      ...combatant,
+      turnOrder: index + 1,
+    }));
+    const currentTurnIndex = activeCombatantId
+      ? Math.max(
+          0,
+          renumberedCombatants.findIndex(
+            (combatant) => combatant.id === activeCombatantId,
+          ),
+        )
+      : state.combatState.currentTurnIndex;
+
+    return this.saveCombatState({
+      active: state.combatState.active,
+      combatants: renumberedCombatants,
+      currentTurnIndex,
+    });
+  },
+
+  async nextCombatTurn() {
+    if (!state.combatState) {
+      return null;
+    }
+
+    const currentTurnIndex = getNextTurnIndex(
+      state.combatState.currentTurnIndex,
+      state.combatState.combatants.length,
+    );
+    const roundNumber = getNextRoundNumber(
+      state.combatState.currentTurnIndex,
+      state.combatState.combatants.length,
+      state.combatState.roundNumber,
+    );
+
+    return this.saveCombatState({
+      currentTurnIndex,
+      roundNumber,
+    });
+  },
+
+  async previousCombatTurn() {
+    if (!state.combatState) {
+      return null;
+    }
+
+    return this.saveCombatState({
+      currentTurnIndex: getPreviousTurnIndex(
+        state.combatState.currentTurnIndex,
+        state.combatState.combatants.length,
+      ),
+    });
   },
 
   async saveChaosFactor(chaosFactor: number) {

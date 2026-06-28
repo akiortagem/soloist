@@ -22,6 +22,8 @@ export type ParsedSceneCommand = {
 
 export type ParsedCombatCommand = {
   type: "combat";
+  raw: string;
+  action: "begin" | "turn" | "block" | "end";
 };
 
 export type ParsedStatCommand = {
@@ -30,6 +32,15 @@ export type ParsedStatCommand = {
   sheetName: string;
   statName: string;
   delta: number;
+};
+
+export type ParsedTrackerStatCommand = {
+  type: "trackerStat";
+  raw: string;
+  characterName: string;
+  statName: string;
+  mode: "increment" | "absolute";
+  value: number;
 };
 
 export type ParsedChaosCommand = {
@@ -58,6 +69,7 @@ export type ParsedCommand =
   | ParsedSceneCommand
   | ParsedCombatCommand
   | ParsedStatCommand
+  | ParsedTrackerStatCommand
   | ParsedChaosCommand
   | ParsedInvalidCommand
   | ParsedUnknownCommand;

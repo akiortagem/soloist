@@ -1,5 +1,10 @@
 import type { JSONContent } from "@tiptap/core";
-import type { ResultBlock, SceneContainerPayload } from "../domain/domainTypes";
+import type {
+  CombatSpacePayload,
+  CombatTurnBlockPayload,
+  ResultBlock,
+  SceneContainerPayload,
+} from "../domain/domainTypes";
 
 type TextMark = "bold" | "italic";
 
@@ -147,6 +152,28 @@ function sceneContainerNode(
   };
 }
 
+function combatSpaceNode(
+  payload: CombatSpacePayload,
+  content: JSONContent[],
+): JSONContent {
+  return {
+    type: "combatSpace",
+    attrs: { payload },
+    content,
+  };
+}
+
+function combatTurnBlockNode(
+  payload: CombatTurnBlockPayload,
+  content: JSONContent[],
+): JSONContent {
+  return {
+    type: "combatTurnBlock",
+    attrs: { payload },
+    content: content.length > 0 ? content : [{ type: "paragraph" }],
+  };
+}
+
 function isResultBlockType(type: string): type is ResultBlock["type"] {
   return (
     type === "roll" ||
@@ -214,6 +241,66 @@ function parseSceneContainerFence(body: string): SceneContainerPayload | null {
   }
 }
 
+function parseCombatSpaceFence(body: string): CombatSpacePayload | null {
+  try {
+    const parsed = JSON.parse(body) as Partial<CombatSpacePayload>;
+
+    if (typeof parsed.id !== "string") {
+      return null;
+    }
+
+    return {
+      id: parsed.id,
+      active: parsed.active === true,
+      ended: parsed.ended === true,
+      roundNumber:
+        typeof parsed.roundNumber === "number" && Number.isFinite(parsed.roundNumber)
+          ? Math.max(1, parsed.roundNumber)
+          : 1,
+      currentTurnIndex:
+        typeof parsed.currentTurnIndex === "number" &&
+        Number.isFinite(parsed.currentTurnIndex)
+          ? Math.max(0, parsed.currentTurnIndex)
+          : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseCombatTurnFence(body: string): CombatTurnBlockPayload | null {
+  try {
+    const parsed = JSON.parse(body) as Partial<CombatTurnBlockPayload>;
+
+    if (
+      typeof parsed.id !== "string" ||
+      typeof parsed.combatantId !== "string" ||
+      typeof parsed.combatantName !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      id: parsed.id,
+      combatantId: parsed.combatantId,
+      combatantName: parsed.combatantName,
+      roundNumber:
+        typeof parsed.roundNumber === "number" && Number.isFinite(parsed.roundNumber)
+          ? Math.max(1, parsed.roundNumber)
+          : 1,
+      turnIndex:
+        typeof parsed.turnIndex === "number" && Number.isFinite(parsed.turnIndex)
+          ? Math.max(0, parsed.turnIndex)
+          : 0,
+      current: parsed.current === true,
+      collapsed:
+        typeof parsed.collapsed === "boolean" ? parsed.collapsed : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function findNextSceneFence(lines: string[], start: number, end: number): number {
   for (let index = start; index < end; index += 1) {
     if (/^:::trpg-scene\s*$/.test(lines[index])) {
@@ -222,6 +309,90 @@ function findNextSceneFence(lines: string[], start: number, end: number): number
   }
 
   return end;
+}
+
+function parseCombatSpaceLines(
+  lines: string[],
+  startIndex: number,
+  endIndex: number,
+): { content: JSONContent[]; endIndex: number } {
+  const content: JSONContent[] = [];
+  let lineIndex = startIndex;
+
+  while (lineIndex < endIndex) {
+    if (/^:::trpg-combat-space-end\s*$/.test(lines[lineIndex])) {
+      return { content, endIndex: lineIndex };
+    }
+
+    if (!/^:::trpg-combat-turn\s*$/.test(lines[lineIndex])) {
+      const contentStart = lineIndex;
+      let contentEnd = contentStart;
+
+      while (contentEnd < endIndex) {
+        if (
+          /^:::trpg-combat-turn\s*$/.test(lines[contentEnd]) ||
+          /^:::trpg-combat-space-end\s*$/.test(lines[contentEnd])
+        ) {
+          break;
+        }
+
+        contentEnd += 1;
+      }
+
+      content.push(...parseMarkdownLines(lines, contentStart, contentEnd));
+      lineIndex = contentEnd;
+      continue;
+    }
+
+    const payloadLines: string[] = [];
+    let payloadClosed = false;
+
+    while (lineIndex + 1 < endIndex) {
+      lineIndex += 1;
+      const nextLine = lines[lineIndex];
+
+      if (nextLine.trim() === ":::") {
+        payloadClosed = true;
+        break;
+      }
+
+      payloadLines.push(nextLine);
+    }
+
+    const payload = payloadClosed
+      ? parseCombatTurnFence(payloadLines.join("\n"))
+      : null;
+
+    if (!payload) {
+      lineIndex += 1;
+      continue;
+    }
+
+    const contentStart = lineIndex + 1;
+    let contentEnd = contentStart;
+
+    while (contentEnd < endIndex) {
+      if (
+        /^:::trpg-combat-turn-end\s*$/.test(lines[contentEnd]) ||
+        /^:::trpg-combat-space-end\s*$/.test(lines[contentEnd])
+      ) {
+        break;
+      }
+
+      contentEnd += 1;
+    }
+
+    content.push(
+      combatTurnBlockNode(payload, parseMarkdownLines(lines, contentStart, contentEnd)),
+    );
+    lineIndex =
+      contentEnd < endIndex &&
+      /^:::trpg-combat-turn-end\s*$/.test(lines[contentEnd])
+        ? contentEnd + 1
+        : contentEnd;
+  }
+
+  return { content, endIndex: lineIndex };
 }
 
 function parseMarkdownLines(
@@ -255,9 +426,42 @@ function parseMarkdownLines(
     const line = lines[lineIndex];
     const headingMatch = /^(#{1,6})\s+(.+)$/.exec(line);
     const bulletMatch = /^\s*[-*+]\s+(.+)$/.exec(line);
+    const combatSpaceFenceMatch = /^:::trpg-combat-space\s*$/.exec(line);
     const resultFenceMatch = /^:::trpg-(roll|oracle|scene|combat|stat|chaos|error)\s*$/.exec(
       line,
     );
+
+    if (combatSpaceFenceMatch) {
+      flushParagraph();
+      flushBullets();
+
+      const bodyLines: string[] = [];
+      let closed = false;
+
+      while (lineIndex + 1 < endIndex) {
+        lineIndex += 1;
+        const nextLine = lines[lineIndex];
+
+        if (nextLine.trim() === ":::") {
+          closed = true;
+          break;
+        }
+
+        bodyLines.push(nextLine);
+      }
+
+      const payload = closed ? parseCombatSpaceFence(bodyLines.join("\n")) : null;
+
+      if (!payload) {
+        paragraphLines.push(line, ...bodyLines);
+        continue;
+      }
+
+      const parsedCombat = parseCombatSpaceLines(lines, lineIndex + 1, endIndex);
+      content.push(combatSpaceNode(payload, parsedCombat.content));
+      lineIndex = parsedCombat.endIndex;
+      continue;
+    }
 
     if (resultFenceMatch) {
       flushParagraph();
@@ -419,6 +623,52 @@ function serializeBlock(node: JSONContent): string {
         .join("\n\n");
 
       return [`:::trpg-scene`, JSON.stringify(payload), ":::", sceneContent]
+        .filter((part) => part.trim().length > 0)
+        .join("\n");
+    }
+
+    case "combatSpace": {
+      const payload = node.attrs?.payload as CombatSpacePayload | undefined;
+
+      if (!payload) {
+        return serializeInline(node.content);
+      }
+
+      const combatContent = (node.content ?? [])
+        .map(serializeBlock)
+        .filter((block) => block.trim().length > 0)
+        .join("\n\n");
+
+      return [
+        ":::trpg-combat-space",
+        JSON.stringify(payload),
+        ":::",
+        combatContent,
+        ":::trpg-combat-space-end",
+      ]
+        .filter((part) => part.trim().length > 0)
+        .join("\n");
+    }
+
+    case "combatTurnBlock": {
+      const payload = node.attrs?.payload as CombatTurnBlockPayload | undefined;
+
+      if (!payload) {
+        return serializeInline(node.content);
+      }
+
+      const turnContent = (node.content ?? [])
+        .map(serializeBlock)
+        .filter((block) => block.trim().length > 0)
+        .join("\n\n");
+
+      return [
+        ":::trpg-combat-turn",
+        JSON.stringify(payload),
+        ":::",
+        turnContent,
+        ":::trpg-combat-turn-end",
+      ]
         .filter((part) => part.trim().length > 0)
         .join("\n");
     }

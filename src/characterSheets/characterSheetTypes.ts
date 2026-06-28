@@ -8,4 +8,5 @@ export type {
   CharacterTemplateLayout,
   CharacterTemplateLayoutColumn,
   CharacterTemplateSeparator,
+  CurrentMaxNumberValue,
 } from "../domain/domainTypes";

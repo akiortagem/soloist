@@ -24,6 +24,7 @@ import type {
   CharacterTemplateGroup,
   CharacterTemplateItem,
   CharacterTemplateLayout,
+  CurrentMaxNumberValue,
 } from "./characterSheetTypes";
 import { appStore, useAppStore } from "../state/appStore";
 
@@ -38,6 +39,17 @@ function parseOptionalNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function getCurrentMaxDefaultValue(
+  value: CharacterTemplateField["defaultValue"],
+): CurrentMaxNumberValue {
+  const coercedValue = coerceTemplateFieldDefaultValue(
+    "current_max_number",
+    value,
+  );
+
+  return coercedValue as CurrentMaxNumberValue;
+}
+
 function renderTemplateFieldInput(field: CharacterTemplateField) {
   if (field.type === "number") {
     return (
@@ -49,6 +61,30 @@ function renderTemplateFieldInput(field: CharacterTemplateField) {
         readOnly
         type="number"
       />
+    );
+  }
+
+  if (field.type === "current_max_number") {
+    const defaultValue = getCurrentMaxDefaultValue(field.defaultValue);
+
+    return (
+      <div className="sheet-current-max-field template-current-max-field">
+        <input
+          aria-label={`${field.name} current default value`}
+          defaultValue={String(defaultValue.current)}
+          min={0}
+          readOnly
+          type="number"
+        />
+        <span>/</span>
+        <input
+          aria-label={`${field.name} maximum default value`}
+          defaultValue={String(defaultValue.max)}
+          min={0}
+          readOnly
+          type="number"
+        />
+      </div>
     );
   }
 
@@ -326,6 +362,53 @@ function FieldEditor({
               }
               type="number"
               value={field.maxValue ?? ""}
+            />
+          </label>
+        </>
+      ) : null}
+
+      {field.type === "current_max_number" ? (
+        <>
+          <label>
+            Current default
+            <input
+              min={0}
+              onChange={(event) =>
+                onChange({
+                  ...field,
+                  defaultValue: {
+                    ...getCurrentMaxDefaultValue(field.defaultValue),
+                    current: Math.max(
+                      0,
+                      Number.parseFloat(event.currentTarget.value) || 0,
+                    ),
+                  },
+                })
+              }
+              type="number"
+              value={String(
+                getCurrentMaxDefaultValue(field.defaultValue).current,
+              )}
+            />
+          </label>
+          <label>
+            Max default
+            <input
+              min={0}
+              onChange={(event) =>
+                onChange({
+                  ...field,
+                  defaultValue: {
+                    ...getCurrentMaxDefaultValue(field.defaultValue),
+                    max: Math.max(
+                      0,
+                      Number.parseFloat(event.currentTarget.value) || 0,
+                    ),
+                  },
+                })
+              }
+              type="number"
+              value={String(getCurrentMaxDefaultValue(field.defaultValue).max)}
             />
           </label>
         </>

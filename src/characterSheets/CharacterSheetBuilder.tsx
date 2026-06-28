@@ -4,6 +4,7 @@ import type {
   CharacterTemplateField,
   CharacterTemplateItem,
   CharacterTemplateLayout,
+  CurrentMaxNumberValue,
 } from "./characterSheetTypes";
 import {
   isTemplateField,
@@ -13,9 +14,50 @@ import {
 } from "./characterSheetTemplateLogic";
 import { appStore, useAppStore } from "../state/appStore";
 
+function coerceNumberValue(value: string) {
+  if (value.trim() === "") {
+    return 0;
+  }
+
+  const numericValue = Number.parseFloat(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function coerceNonNegativeNumberValue(value: string) {
+  return Math.max(0, coerceNumberValue(value));
+}
+
+function getCurrentMaxValue(value: CharacterField["value"]): CurrentMaxNumberValue {
+  if (value && typeof value === "object") {
+    const candidate = value as Partial<CurrentMaxNumberValue>;
+
+    return {
+      current:
+        typeof candidate.current === "number" &&
+        Number.isFinite(candidate.current)
+          ? Math.max(0, candidate.current)
+          : 0,
+      max:
+        typeof candidate.max === "number" && Number.isFinite(candidate.max)
+          ? Math.max(0, candidate.max)
+          : 0,
+    };
+  }
+
+  return {
+    current: 0,
+    max: 0,
+  };
+}
+
 function formatFieldValue(field: CharacterField) {
   if (field.type === "boolean") {
     return field.value === true ? "Yes" : "No";
+  }
+
+  if (field.type === "current_max_number") {
+    const value = getCurrentMaxValue(field.value);
+    return `${value.current} / ${value.max}`;
   }
 
   return String(field.value);
@@ -23,9 +65,7 @@ function formatFieldValue(field: CharacterField) {
 
 function coerceFieldValue(field: CharacterField, value: string | boolean) {
   if (field.type === "number") {
-    const numericValue =
-      typeof value === "number" ? value : Number.parseFloat(String(value));
-    return Number.isFinite(numericValue) ? numericValue : 0;
+    return coerceNumberValue(String(value));
   }
 
   if (field.type === "boolean") {
@@ -148,6 +188,31 @@ export function CharacterSheetBuilder() {
     });
   }
 
+  async function updateCurrentMaxField(
+    field: CharacterField,
+    patch: Partial<CurrentMaxNumberValue>,
+  ) {
+    if (!activeCharacterSheet) {
+      return;
+    }
+
+    const currentValue = getCurrentMaxValue(field.value);
+
+    await appStore.saveActiveCharacterSheet({
+      fields: activeCharacterSheet.fields.map((candidate) =>
+        candidate.id === field.id
+          ? {
+              ...candidate,
+              value: {
+                current: patch.current ?? currentValue.current,
+                max: patch.max ?? currentValue.max,
+              },
+            }
+          : candidate,
+      ),
+    });
+  }
+
   async function deleteField(fieldId: string) {
     if (!activeCharacterSheet) {
       return;
@@ -167,6 +232,9 @@ export function CharacterSheetBuilder() {
   }
 
   function renderField(field: CharacterField, options?: { canDelete?: boolean }) {
+    const currentMaxValue =
+      field.type === "current_max_number" ? getCurrentMaxValue(field.value) : null;
+
     return (
       <div className="sheet-field-row" key={field.id}>
         <label>
@@ -187,6 +255,34 @@ export function CharacterSheetBuilder() {
               rows={3}
               value={formatFieldValue(field)}
             />
+          ) : field.type === "current_max_number" && currentMaxValue ? (
+            <div className="sheet-current-max-field">
+              <input
+                aria-label={`${field.name} current value`}
+                min={0}
+                onChange={(event) =>
+                  void updateCurrentMaxField(field, {
+                    current: coerceNonNegativeNumberValue(
+                      event.currentTarget.value,
+                    ),
+                  })
+                }
+                type="number"
+                value={currentMaxValue.current}
+              />
+              <span>/</span>
+              <input
+                aria-label={`${field.name} maximum value`}
+                min={0}
+                onChange={(event) =>
+                  void updateCurrentMaxField(field, {
+                    max: coerceNonNegativeNumberValue(event.currentTarget.value),
+                  })
+                }
+                type="number"
+                value={currentMaxValue.max}
+              />
+            </div>
           ) : (
             <input
               max={field.maxValue}

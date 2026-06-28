@@ -1,1 +1,5 @@
-export type { Combatant, CombatState } from "../domain/domainTypes";
+export type {
+  Combatant,
+  CombatantTrackedField,
+  CombatState,
+} from "../domain/domainTypes";
