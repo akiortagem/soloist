@@ -26,6 +26,7 @@ import {
   getPreviousTurnIndex,
   normalizeCombatState,
 } from "../combat/combatLogic";
+import { ensureOnboardingContent } from "../onboarding/onboardingContent";
 import { createRepositories } from "../persistence/sessionRepository";
 
 export type AppRoute =
@@ -344,6 +345,7 @@ export const appStore = {
 
     try {
       const repositories = await createRepositories();
+      await ensureOnboardingContent(repositories);
       const sessions = await repositories.sessions.list();
       const activeSession = getActiveSession(sessions, state.activeSessionId);
 

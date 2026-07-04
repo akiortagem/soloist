@@ -8,6 +8,18 @@ export type AppSettingRecord = {
 export class SettingsRepository {
   constructor(private readonly db: Database) {}
 
+  async get(key: string) {
+    const rows = await this.db.select<AppSettingRecord[]>(
+      `SELECT key, value_json
+       FROM app_settings
+       WHERE key = $1
+       LIMIT 1`,
+      [key],
+    );
+
+    return rows[0] ?? null;
+  }
+
   async set(input: { key: string; valueJson: string }) {
     const setting: AppSettingRecord = {
       key: input.key,
