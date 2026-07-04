@@ -31,7 +31,7 @@
     "category": "Productivity",
     "copyright": "",
     "externalBin": [],
-    "icon": ["icons/icon.png"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
     "longDescription": "A local-first solo TRPG markdown writing app.",
     "publisher": "Soloist",
     "resources": [],
