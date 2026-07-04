@@ -130,5 +130,17 @@ pub fn migrations() -> Vec<Migration> {
             sql: "ALTER TABLE combat_states ADD COLUMN round_number INTEGER NOT NULL DEFAULT 1;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "add_character_sheet_nick",
+            sql: "ALTER TABLE character_sheets ADD COLUMN nick TEXT;",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "unique_character_sheet_nick_per_session",
+            sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_character_sheets_session_nick ON character_sheets(session_id, nick) WHERE nick IS NOT NULL;",
+            kind: MigrationKind::Up,
+        },
     ]
 }

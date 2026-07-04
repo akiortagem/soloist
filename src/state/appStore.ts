@@ -16,6 +16,11 @@ import {
   syncFieldsWithTemplate,
 } from "../characterSheets/characterSheetTemplateLogic";
 import {
+  createUniqueCharacterSheetNick,
+  findCharacterSheetForStatTarget,
+  normalizeCharacterSheetNick,
+} from "../characterSheets/characterSheetLogic";
+import {
   getNextTurnIndex,
   getNextRoundNumber,
   getPreviousTurnIndex,
@@ -578,16 +583,40 @@ export const appStore = {
 
   async saveActiveCharacterSheet(input: {
     name?: string;
+    nick?: string | null;
     fields?: CharacterSheet["fields"];
   }) {
     if (!state.activeCharacterSheet) {
       return null;
     }
 
+    const normalizedNick =
+      input.nick === undefined
+        ? undefined
+        : normalizeCharacterSheetNick(input.nick ?? "") || null;
+
+    if (normalizedNick) {
+      const nickConflict = state.characterSheets.find(
+        (sheet) =>
+          sheet.id !== state.activeCharacterSheet?.id &&
+          sheet.nick &&
+          normalizeCharacterSheetNick(sheet.nick) === normalizedNick,
+      );
+
+      if (nickConflict) {
+        setState({
+          persistenceError: `Nick "${normalizedNick}" is already used by ${nickConflict.name}.`,
+          persistenceMessage: "Sheet save failed.",
+        });
+        return null;
+      }
+    }
+
     const repositories = await createRepositories();
     const activeCharacterSheet = await repositories.characterSheets.update({
       id: state.activeCharacterSheet.id,
       ...input,
+      nick: normalizedNick,
     });
 
     if (activeCharacterSheet) {
@@ -683,13 +712,11 @@ export const appStore = {
     statName: string;
     delta: number;
   }): StatDeltaResult {
-    const normalizedSheetName = input.sheetName.trim().toLocaleLowerCase();
     const normalizedStatName = input.statName.trim().toLocaleLowerCase();
-    const sheet =
-      state.characterSheets.find(
-        (candidate) =>
-          candidate.name.trim().toLocaleLowerCase() === normalizedSheetName,
-      ) ?? null;
+    const sheet = findCharacterSheetForStatTarget(
+      state.characterSheets,
+      input.sheetName,
+    );
 
     if (!sheet) {
       return {
@@ -1048,9 +1075,11 @@ export const appStore = {
 
     try {
       const repositories = await createRepositories();
+      const name = input.name.trim() || "New Character";
       const createdSheet = await repositories.characterSheets.create({
         sessionId: state.activeSession.id,
-        name: input.name.trim() || "New Character",
+        name,
+        nick: createUniqueCharacterSheetNick(name, state.characterSheets),
         templateId: template.id,
         templateName: template.name,
         fields: createFieldsFromTemplate(template.fields),

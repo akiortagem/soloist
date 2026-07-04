@@ -82,6 +82,7 @@ export function CharacterSheetBuilder() {
     characterSheetTemplates,
   } = useAppStore();
   const [renameValue, setRenameValue] = useState("");
+  const [nickValue, setNickValue] = useState("");
 
   useEffect(() => {
     void appStore.loadTemplates();
@@ -90,6 +91,10 @@ export function CharacterSheetBuilder() {
   useEffect(() => {
     setRenameValue(activeCharacterSheet?.name ?? "");
   }, [activeCharacterSheet?.id, activeCharacterSheet?.name]);
+
+  useEffect(() => {
+    setNickValue(activeCharacterSheet?.nick ?? "");
+  }, [activeCharacterSheet?.id, activeCharacterSheet?.nick]);
 
   const activeTemplate = useMemo(
     () =>
@@ -172,6 +177,14 @@ export function CharacterSheetBuilder() {
     }
 
     await appStore.saveActiveCharacterSheet({ name: nextName });
+  }
+
+  async function saveNick() {
+    if (!activeCharacterSheet || nickValue === (activeCharacterSheet.nick ?? "")) {
+      return;
+    }
+
+    await appStore.saveActiveCharacterSheet({ nick: nickValue });
   }
 
   async function updateField(field: CharacterField, value: string | boolean) {
@@ -403,6 +416,21 @@ export function CharacterSheetBuilder() {
               Template: <strong>{activeCharacterSheet.templateName}</strong>
             </p>
           ) : null}
+          <label>
+            Nick
+            <input
+              onBlur={() => void saveNick()}
+              onChange={(event) => setNickValue(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="Optional /stat target"
+              type="text"
+              value={nickValue}
+            />
+          </label>
           <div className="sheet-editor-actions">
             <button
               className="danger-button"

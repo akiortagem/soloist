@@ -50,6 +50,7 @@ export type CharacterSheet = {
   id: string;
   sessionId: string;
   name: string;
+  nick?: string;
   templateId?: string;
   templateName?: string;
   fields: CharacterField[];

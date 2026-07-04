@@ -14,6 +14,7 @@ type CharacterSheetRow = {
   id: string;
   session_id: string;
   name: string;
+  nick: string | null;
   template_id: string | null;
   template_name: string | null;
   fields_json: string;
@@ -39,6 +40,7 @@ function mapCharacterSheet(row: CharacterSheetRow): CharacterSheetRecord {
     id: row.id,
     sessionId: row.session_id,
     name: row.name,
+    nick: row.nick ?? undefined,
     templateId: row.template_id ?? undefined,
     templateName: row.template_name ?? undefined,
     fields: parseJsonArray<CharacterField>(row.fields_json),
@@ -64,7 +66,7 @@ export class CharacterSheetRepository {
 
   async listBySessionId(sessionId: string) {
     const rows = await this.db.select<CharacterSheetRow[]>(
-      `SELECT id, session_id, name, template_id, template_name, fields_json, created_at, updated_at
+      `SELECT id, session_id, name, nick, template_id, template_name, fields_json, created_at, updated_at
        FROM character_sheets
        WHERE session_id = $1
        ORDER BY updated_at DESC`,
@@ -76,7 +78,7 @@ export class CharacterSheetRepository {
 
   async listByTemplateId(templateId: string) {
     const rows = await this.db.select<CharacterSheetRow[]>(
-      `SELECT id, session_id, name, template_id, template_name, fields_json, created_at, updated_at
+      `SELECT id, session_id, name, nick, template_id, template_name, fields_json, created_at, updated_at
        FROM character_sheets
        WHERE template_id = $1
        ORDER BY updated_at DESC`,
@@ -88,7 +90,7 @@ export class CharacterSheetRepository {
 
   async get(id: string) {
     const rows = await this.db.select<CharacterSheetRow[]>(
-      `SELECT id, session_id, name, template_id, template_name, fields_json, created_at, updated_at
+      `SELECT id, session_id, name, nick, template_id, template_name, fields_json, created_at, updated_at
        FROM character_sheets
        WHERE id = $1
        LIMIT 1`,
@@ -101,6 +103,7 @@ export class CharacterSheetRepository {
   async create(input: {
     sessionId: string;
     name: string;
+    nick?: string | null;
     templateId?: string;
     templateName?: string;
     fields?: CharacterField[];
@@ -110,6 +113,7 @@ export class CharacterSheetRepository {
       id: createId("sheet"),
       sessionId: input.sessionId,
       name: input.name,
+      nick: input.nick ?? undefined,
       templateId: input.templateId,
       templateName: input.templateName,
       fields: input.fields ?? [],
@@ -119,12 +123,13 @@ export class CharacterSheetRepository {
 
     await this.db.execute(
       `INSERT INTO character_sheets
-       (id, session_id, name, template_id, template_name, fields_json, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       (id, session_id, name, nick, template_id, template_name, fields_json, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         sheet.id,
         sheet.sessionId,
         sheet.name,
+        sheet.nick ?? null,
         sheet.templateId ?? null,
         sheet.templateName ?? null,
         JSON.stringify(sheet.fields),
@@ -139,6 +144,7 @@ export class CharacterSheetRepository {
   async update(input: {
     id: string;
     name?: string;
+    nick?: string | null;
     fields?: CharacterField[];
   }) {
     const current = await this.get(input.id);
@@ -150,6 +156,7 @@ export class CharacterSheetRepository {
     const updated: CharacterSheetRecord = {
       ...current,
       name: input.name ?? current.name,
+      nick: input.nick === undefined ? current.nick : (input.nick ?? undefined),
       fields: input.fields ?? current.fields,
       updatedAt: nowIso(),
     };
@@ -157,11 +164,13 @@ export class CharacterSheetRepository {
     await this.db.execute(
       `UPDATE character_sheets
        SET name = $1,
-           fields_json = $2,
-           updated_at = $3
-       WHERE id = $4`,
+           nick = $2,
+           fields_json = $3,
+           updated_at = $4
+       WHERE id = $5`,
       [
         updated.name,
+        updated.nick ?? null,
         JSON.stringify(updated.fields),
         updated.updatedAt,
         updated.id,

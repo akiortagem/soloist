@@ -94,6 +94,11 @@ export function CharacterSheetPanel() {
                           {sheet.templateName ?? "Unknown template"}
                         </strong>
                       </p>
+                      {sheet.nick ? (
+                        <p>
+                          Nick: <strong>{sheet.nick}</strong>
+                        </p>
+                      ) : null}
                     </div>
                     <dl>
                       <div>
