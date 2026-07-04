@@ -8,7 +8,10 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --no-bundle --ci",
+    "tauri:bundle": "tauri build --ci"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

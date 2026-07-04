@@ -1,0 +1,73 @@
+name: Build Portable Desktop Artifacts
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-latest
+            artifact_name: soloist-windows-exe
+          - platform: linux
+            runner: ubuntu-22.04
+            artifact_name: soloist-linux-executable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build portable executable
+        run: npm run tauri:build
+
+      - name: Stage Windows executable
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts
+          Copy-Item src-tauri/target/release/soloist.exe artifacts/Soloist-windows-x64.exe
+
+      - name: Stage Linux executable
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p artifacts
+          cp src-tauri/target/release/soloist artifacts/soloist-linux-x64
+          chmod +x artifacts/soloist-linux-x64
+
+      - name: Upload portable executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/*
+          if-no-files-found: error

@@ -33,6 +33,7 @@
     "externalBin": [],
     "icon": ["icons/icon.png"],
     "longDescription": "A local-first solo TRPG markdown writing app.",
+    "publisher": "Soloist",
     "resources": [],
     "shortDescription": "Solo TRPG markdown workspace",
     "targets": ["nsis"],
