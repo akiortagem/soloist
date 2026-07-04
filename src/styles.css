@@ -39,7 +39,7 @@ nav {
 }
 
 nav button,
-.session-list button,
+.document-tree button,
 .sidebar-section-header button,
 .result-block-collapse {
   background: transparent;
@@ -48,14 +48,32 @@ nav button,
   text-align: left;
 }
 
+nav button,
+.tree-row > button,
+.tree-name-form,
+.tree-menu-popover button {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+nav svg,
+.document-tree svg,
+.sidebar-section-header svg,
+.tools-edge-toggle svg {
+  flex: 0 0 auto;
+  height: 16px;
+  width: 16px;
+}
+
 nav button:hover,
-.session-list button:hover {
+.document-tree button:hover {
   background: var(--color-surface-raised);
   color: var(--color-text);
 }
 
 nav button.active,
-.session-list button.selected,
+.document-tree .selected,
 .sidebar-section-header button {
   background: var(--color-accent-soft);
   box-shadow: inset 0 0 0 1px var(--color-border-strong);
@@ -70,9 +88,9 @@ nav button.active,
   text-transform: uppercase;
 }
 
-.session-list {
+.document-tree {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sidebar-section-header {
@@ -96,20 +114,122 @@ nav button.active,
   width: 32px;
 }
 
-.session-list button {
-  display: grid;
-  gap: 4px;
-}
-
-.session-list small {
-  color: var(--color-text-subtle);
-}
-
 .empty-state {
   color: var(--color-text-subtle);
   font-size: 0.875rem;
   line-height: 1.5;
   margin: 0;
+}
+
+.tree-campaign,
+.tree-node {
+  display: grid;
+  gap: 4px;
+}
+
+.tree-row {
+  align-items: center;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  min-height: 34px;
+  position: relative;
+}
+
+.tree-row > button,
+.tree-name-form,
+.tree-document {
+  align-items: center;
+  border-radius: 6px;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  width: 100%;
+}
+
+.tree-row > button span:last-child,
+.tree-name-form input,
+.tree-document span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-row > button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.tree-name-form {
+  color: var(--color-text-strong);
+  padding: 4px 8px;
+}
+
+.tree-name-form input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  color: var(--color-text-strong);
+  min-width: 0;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.tree-menu {
+  position: relative;
+}
+
+.tree-menu > button {
+  align-items: center;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+}
+
+.tree-menu-popover {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 30%);
+  min-width: 144px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: 32px;
+  z-index: 20;
+}
+
+.tree-menu-popover button {
+  align-items: center;
+  border-radius: 4px;
+  color: var(--color-text);
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  width: 100%;
+}
+
+.tree-children {
+  display: grid;
+  gap: 3px;
+  padding-left: 16px;
+}
+
+.tree-document {
+  font-size: 0.92rem;
+  text-align: left;
+}
+
+.tree-empty {
+  color: var(--color-text-subtle);
+  font-size: 0.82rem;
+  margin: 2px 0 6px;
+  padding: 4px 8px;
 }
 
 .editor-area {
@@ -181,7 +301,36 @@ nav button.active,
   margin: 0;
 }
 
+.document-title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-strong);
+  display: block;
+  font: inherit;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: -4px 0 0;
+  min-width: 0;
+  padding: 4px 6px;
+  width: 100%;
+}
+
+.document-title-input:hover,
+.document-title-input:focus {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  outline: none;
+}
+
 .editor-empty-state p {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.editor-title-only-note {
   color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0;
@@ -1336,6 +1485,11 @@ nav button.active,
   color: var(--color-text-strong);
 }
 
+.editor-frame .sheet-template-note {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
 .sheet-modal-backdrop {
   align-items: center;
   background: rgb(0 0 0 / 54%);
@@ -1418,20 +1572,72 @@ nav button.active,
   justify-content: flex-end;
 }
 
-.sheet-field-group {
+.editor-frame .sheet-editor {
+  background: transparent;
+  border: 0;
+  gap: 20px;
+  padding: 0;
+}
+
+.editor-frame .sheet-editor input,
+.editor-frame .sheet-editor select,
+.editor-frame .sheet-editor textarea {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  font: inherit;
+  min-width: 0;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.editor-frame .sheet-editor input:focus,
+.editor-frame .sheet-editor select:focus,
+.editor-frame .sheet-editor textarea:focus {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+.editor-frame .sheet-editor textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.character-template-choice {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
   display: grid;
   gap: 8px;
+  max-width: 420px;
+  padding: 14px;
+}
+
+.character-nick-field {
+  color: var(--color-text-muted);
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.sheet-field-group {
+  display: grid;
+  gap: 12px;
 }
 
 .sheet-template-layout {
   display: grid;
-  gap: 12px;
+  align-items: start;
+  gap: 10px;
 }
 
 .sheet-template-column {
   align-content: start;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -1465,8 +1671,20 @@ nav button.active,
   text-transform: uppercase;
 }
 
+.editor-frame .sheet-field-group {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  container-type: inline-size;
+  padding: 14px 16px 16px;
+}
+
+.editor-frame .sheet-field-group h3 {
+  margin-top: 0;
+}
+
 .sheet-field-row {
-  align-items: end;
+  align-items: stretch;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -1476,9 +1694,35 @@ nav button.active,
   padding: 10px;
 }
 
+.editor-frame .sheet-field-row {
+  container-type: inline-size;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 14px;
+}
+
+.sheet-field-row label {
+  color: var(--color-text-muted);
+  display: grid;
+  gap: 8px;
+  font-size: clamp(0.82rem, 4.4cqi, 0.95rem);
+  line-height: 1.25;
+}
+
+.sheet-field-row label > input,
+.sheet-field-row label > textarea,
+.sheet-field-row label > select,
+.sheet-current-max-field {
+  margin-top: 2px;
+}
+
 .sheet-field-row input[type="checkbox"] {
   justify-self: start;
   width: auto;
+}
+
+.editor-frame .sheet-field-row input[type="checkbox"] {
+  height: 18px;
+  width: 18px;
 }
 
 .sheet-current-max-field {
@@ -1491,6 +1735,22 @@ nav button.active,
 .sheet-current-max-field span {
   color: var(--color-text-muted);
   font-weight: 700;
+}
+
+.editor-frame .sheet-field-list {
+  align-items: start;
+}
+
+.editor-frame .sheet-template-layout {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.editor-frame .sheet-template-column {
+  container-type: inline-size;
+  font-size: clamp(0.72rem, 4.4cqi, 0.95rem);
+  padding: 0;
 }
 
 .sheet-field-delete {

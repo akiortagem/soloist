@@ -142,5 +142,60 @@ pub fn migrations() -> Vec<Migration> {
             sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_character_sheets_session_nick ON character_sheets(session_id, nick) WHERE nick IS NOT NULL;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "add_document_tree_metadata",
+            sql: r#"
+            ALTER TABLE documents ADD COLUMN parent_id TEXT;
+            ALTER TABLE documents ADD COLUMN kind TEXT NOT NULL DEFAULT 'session';
+            ALTER TABLE documents ADD COLUMN folder_kind TEXT;
+
+            INSERT OR IGNORE INTO documents
+                (id, session_id, parent_id, kind, folder_kind, title, content_markdown, created_at, updated_at)
+            SELECT
+                'characters_folder_' || sessions.id,
+                sessions.id,
+                NULL,
+                'folder',
+                'characters',
+                'Characters',
+                '',
+                sessions.created_at,
+                sessions.created_at
+            FROM sessions;
+
+            INSERT OR IGNORE INTO documents
+                (id, session_id, parent_id, kind, folder_kind, title, content_markdown, created_at, updated_at)
+            SELECT
+                'sessions_folder_' || sessions.id,
+                sessions.id,
+                NULL,
+                'folder',
+                'sessions',
+                'Sessions',
+                '',
+                sessions.created_at,
+                sessions.created_at
+            FROM sessions;
+
+            UPDATE documents
+            SET parent_id = 'sessions_folder_' || session_id,
+                kind = 'session',
+                folder_kind = NULL
+            WHERE kind = 'session'
+              AND parent_id IS NULL
+              AND id NOT LIKE 'characters_folder_%'
+              AND id NOT LIKE 'sessions_folder_%';
+
+            CREATE INDEX IF NOT EXISTS idx_documents_session_parent ON documents(session_id, parent_id);
+"#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 16,
+            description: "add_document_character_sheet_link",
+            sql: "ALTER TABLE documents ADD COLUMN character_sheet_id TEXT;",
+            kind: MigrationKind::Up,
+        },
     ]
 }

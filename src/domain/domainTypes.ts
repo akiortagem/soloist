@@ -11,6 +11,10 @@ export type Session = {
 export type Document = {
   id: string;
   sessionId: string;
+  parentId?: string;
+  kind: "folder" | "session" | "document" | "character";
+  folderKind?: "characters" | "sessions";
+  characterSheetId?: string;
   title: string;
   contentMarkdown: string;
   createdAt: string;

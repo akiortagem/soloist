@@ -1,7 +1,28 @@
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import type {
+  CharacterField,
+  CharacterTemplateField,
+  CharacterTemplateItem,
+  CharacterTemplateLayout,
+  CurrentMaxNumberValue,
+} from "../domain/domainTypes";
+import {
+  createFieldsFromTemplate,
+  isTemplateField,
+  isTemplateGroup,
+  isTemplateLayout,
+  isTemplateSeparator,
+} from "../characterSheets/characterSheetTemplateLogic";
 import { appStore, useAppStore } from "../state/appStore";
 import { InlineResultBlockExtension } from "./extensions/InlineResultBlockExtension";
 import { CombatSpaceExtension } from "./extensions/CombatSpaceExtension";
@@ -92,36 +113,522 @@ function commandOptionMatches(
   );
 }
 
+function getEditorDom(editor: TiptapEditor): HTMLElement | null {
+  try {
+    return editor.view.dom;
+  } catch {
+    return null;
+  }
+}
+
 export function Editor() {
   const { activeDocument, activeSession } = useAppStore();
 
   if (!activeDocument) {
+    if (activeSession) {
+      return (
+        <TitleOnlyEditor
+          eyebrow="Campaign"
+          onSaveTitle={(title) => appStore.renameSession(activeSession.id, title)}
+          title={activeSession.name}
+        />
+      );
+    }
+
     return (
       <article className="editor-empty-state">
-        <p>Create a session to start writing.</p>
+        <p>Create a campaign to start writing.</p>
       </article>
     );
+  }
+
+  if (activeDocument.kind === "folder") {
+    return (
+      <TitleOnlyEditor
+        eyebrow={activeSession?.name ?? "Campaign"}
+        onSaveTitle={(title) =>
+          appStore.saveDocument(activeDocument.id, { title })
+        }
+        title={activeDocument.title}
+      />
+    );
+  }
+
+  if (activeDocument.kind === "character") {
+    return <CharacterDocumentEditor />;
   }
 
   return (
     <SessionDocumentEditor
       documentId={activeDocument.id}
       initialMarkdown={activeDocument.contentMarkdown}
+      isCampaignDocument={activeDocument.id === activeSession?.documentId}
+      sessionId={activeSession?.id}
       sessionName={activeSession?.name ?? "Session"}
+      supportsSlashCommands={activeDocument.kind === "session"}
       title={activeDocument.title}
     />
+  );
+}
+
+function coerceNumberValue(value: string) {
+  if (value.trim() === "") {
+    return 0;
+  }
+
+  const numericValue = Number.parseFloat(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+}
+
+function coerceNonNegativeNumberValue(value: string) {
+  return Math.max(0, coerceNumberValue(value));
+}
+
+function getCurrentMaxValue(value: CharacterField["value"]): CurrentMaxNumberValue {
+  if (value && typeof value === "object") {
+    const candidate = value as Partial<CurrentMaxNumberValue>;
+
+    return {
+      current:
+        typeof candidate.current === "number" &&
+        Number.isFinite(candidate.current)
+          ? Math.max(0, candidate.current)
+          : 0,
+      max:
+        typeof candidate.max === "number" && Number.isFinite(candidate.max)
+          ? Math.max(0, candidate.max)
+          : 0,
+    };
+  }
+
+  return {
+    current: 0,
+    max: 0,
+  };
+}
+
+function formatFieldValue(field: CharacterField) {
+  if (field.type === "boolean") {
+    return field.value === true ? "true" : "false";
+  }
+
+  if (field.type === "current_max_number") {
+    const value = getCurrentMaxValue(field.value);
+    return `${value.current} / ${value.max}`;
+  }
+
+  return String(field.value);
+}
+
+function coerceFieldValue(field: CharacterField, value: string | boolean) {
+  if (field.type === "number") {
+    return coerceNumberValue(String(value));
+  }
+
+  if (field.type === "boolean") {
+    return value === true;
+  }
+
+  return String(value);
+}
+
+function CharacterDocumentEditor() {
+  const {
+    activeCharacterSheet,
+    activeDocument,
+    characterSheetTemplates,
+  } = useAppStore();
+
+  useEffect(() => {
+    void appStore.loadTemplates();
+  }, []);
+
+  const activeTemplate = useMemo(
+    () =>
+      activeCharacterSheet?.templateId
+        ? (characterSheetTemplates.find(
+            (template) => template.id === activeCharacterSheet.templateId,
+          ) ?? null)
+        : null,
+    [activeCharacterSheet?.templateId, characterSheetTemplates],
+  );
+
+  const fieldsByTemplateId = useMemo(() => {
+    const byTemplateId = new Map<string, CharacterField>();
+
+    for (const field of activeCharacterSheet?.fields ?? []) {
+      if (field.templateFieldId) {
+        byTemplateId.set(field.templateFieldId, field);
+      }
+    }
+
+    return byTemplateId;
+  }, [activeCharacterSheet?.fields]);
+
+  const fieldsByName = useMemo(() => {
+    const byName = new Map<string, CharacterField>();
+
+    for (const field of activeCharacterSheet?.fields ?? []) {
+      byName.set(field.name.trim().toLocaleLowerCase(), field);
+    }
+
+    return byName;
+  }, [activeCharacterSheet?.fields]);
+
+  if (!activeDocument || !activeCharacterSheet) {
+    return (
+      <article className="editor-empty-state">
+        <p>Select a character to edit it.</p>
+      </article>
+    );
+  }
+
+  async function chooseTemplate(templateId: string) {
+    if (!activeCharacterSheet) {
+      return;
+    }
+
+    const template =
+      characterSheetTemplates.find((candidate) => candidate.id === templateId) ??
+      null;
+
+    if (!template) {
+      return;
+    }
+
+    await appStore.saveActiveCharacterSheet({
+      templateId: template.id,
+      templateName: template.name,
+      fields: createFieldsFromTemplate(template.fields),
+    });
+  }
+
+  async function updateField(field: CharacterField, value: string | boolean) {
+    if (!activeCharacterSheet) {
+      return;
+    }
+
+    await appStore.saveActiveCharacterSheet({
+      fields: activeCharacterSheet.fields.map((candidate) =>
+        candidate.id === field.id
+          ? { ...candidate, value: coerceFieldValue(field, value) }
+          : candidate,
+      ),
+    });
+  }
+
+  async function updateCurrentMaxField(
+    field: CharacterField,
+    patch: Partial<CurrentMaxNumberValue>,
+  ) {
+    if (!activeCharacterSheet) {
+      return;
+    }
+
+    const currentValue = getCurrentMaxValue(field.value);
+
+    await appStore.saveActiveCharacterSheet({
+      fields: activeCharacterSheet.fields.map((candidate) =>
+        candidate.id === field.id
+          ? {
+              ...candidate,
+              value: {
+                current: patch.current ?? currentValue.current,
+                max: patch.max ?? currentValue.max,
+              },
+            }
+          : candidate,
+      ),
+    });
+  }
+
+  function findSheetFieldForTemplateField(templateField: CharacterTemplateField) {
+    return (
+      fieldsByTemplateId.get(templateField.id) ??
+      fieldsByName.get(templateField.name.trim().toLocaleLowerCase()) ??
+      null
+    );
+  }
+
+  function renderField(field: CharacterField) {
+    const currentMaxValue =
+      field.type === "current_max_number" ? getCurrentMaxValue(field.value) : null;
+
+    return (
+      <div className="sheet-field-row" key={field.id}>
+        <label>
+          {field.name}
+          {field.type === "boolean" ? (
+            <input
+              checked={field.value === true}
+              onChange={(event) =>
+                void updateField(field, event.currentTarget.checked)
+              }
+              type="checkbox"
+            />
+          ) : field.type === "longText" ? (
+            <textarea
+              onChange={(event) =>
+                void updateField(field, event.currentTarget.value)
+              }
+              rows={3}
+              value={formatFieldValue(field)}
+            />
+          ) : field.type === "current_max_number" && currentMaxValue ? (
+            <div className="sheet-current-max-field">
+              <input
+                aria-label={`${field.name} current value`}
+                min={0}
+                onChange={(event) =>
+                  void updateCurrentMaxField(field, {
+                    current: coerceNonNegativeNumberValue(
+                      event.currentTarget.value,
+                    ),
+                  })
+                }
+                type="number"
+                value={currentMaxValue.current}
+              />
+              <span>/</span>
+              <input
+                aria-label={`${field.name} maximum value`}
+                min={0}
+                onChange={(event) =>
+                  void updateCurrentMaxField(field, {
+                    max: coerceNonNegativeNumberValue(event.currentTarget.value),
+                  })
+                }
+                type="number"
+                value={currentMaxValue.max}
+              />
+            </div>
+          ) : (
+            <input
+              max={field.maxValue}
+              min={field.minValue}
+              onChange={(event) =>
+                void updateField(field, event.currentTarget.value)
+              }
+              type={field.type === "number" ? "number" : "text"}
+              value={formatFieldValue(field)}
+            />
+          )}
+        </label>
+      </div>
+    );
+  }
+
+  function renderTemplateItems(items: CharacterTemplateItem[]): ReactNode {
+    return items.map((item) => {
+      if (isTemplateSeparator(item)) {
+        return (
+          <div className="sheet-template-separator" key={item.id}>
+            <hr />
+            {item.label ? <span>{item.label}</span> : null}
+          </div>
+        );
+      }
+
+      if (isTemplateGroup(item)) {
+        return (
+          <section className="sheet-field-group" key={item.id}>
+            <h3>{item.name}</h3>
+            <div className="sheet-field-list">
+              {item.fields.map((field) => {
+                const sheetField = findSheetFieldForTemplateField(field);
+                return sheetField ? renderField(sheetField) : null;
+              })}
+            </div>
+          </section>
+        );
+      }
+
+      if (isTemplateLayout(item)) {
+        return renderTemplateLayout(item);
+      }
+
+      const sheetField = findSheetFieldForTemplateField(item);
+      return sheetField ? renderField(sheetField) : null;
+    });
+  }
+
+  function renderTemplateLayout(layout: CharacterTemplateLayout) {
+    return (
+      <div
+        className="sheet-template-layout"
+        key={layout.id}
+        style={{
+          gridTemplateColumns: `repeat(${layout.columns.length}, minmax(0, 1fr))`,
+        }}
+      >
+        {layout.columns.map((column) => (
+          <div className="sheet-template-column" key={column.id}>
+            {renderTemplateItems(column.fields)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <article className="editor-frame">
+      <header className="document-heading">
+        <p>Character</p>
+        <EditableTitle
+          ariaLabel="Character name"
+          onSaveTitle={async (nextTitle) => {
+            await appStore.saveDocument(activeDocument.id, {
+              title: nextTitle,
+            });
+          }}
+          title={activeDocument.title}
+        />
+      </header>
+
+      <div className="sheet-editor">
+        <label className="character-nick-field">
+          Nick
+          <input
+            onBlur={(event) =>
+              void appStore.saveActiveCharacterSheet({
+                nick: event.currentTarget.value,
+              })
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+            }}
+            placeholder="Optional /stat target"
+            type="text"
+            defaultValue={activeCharacterSheet.nick ?? ""}
+            key={activeCharacterSheet.id}
+          />
+        </label>
+
+        {!activeCharacterSheet.templateId ? (
+          <label className="character-template-choice">
+            Template
+            {characterSheetTemplates.length > 0 ? (
+              <select
+                onChange={(event) => {
+                  if (event.currentTarget.value) {
+                    void chooseTemplate(event.currentTarget.value);
+                  }
+                }}
+                value=""
+              >
+                <option value="">Choose template</option>
+                {characterSheetTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="empty-state">No templates available.</p>
+            )}
+          </label>
+        ) : (
+          <p className="sheet-template-note">
+            Template: <strong>{activeCharacterSheet.templateName}</strong>
+          </p>
+        )}
+
+        {activeTemplate ? (
+          <div className="sheet-field-list">
+            {renderTemplateItems(activeTemplate.fields)}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function EditableTitle({
+  ariaLabel,
+  onSaveTitle,
+  title,
+}: {
+  ariaLabel: string;
+  onSaveTitle: (title: string) => Promise<unknown>;
+  title: string;
+}) {
+  const [draftTitle, setDraftTitle] = useState(title);
+
+  useEffect(() => {
+    setDraftTitle(title);
+  }, [title]);
+
+  async function saveTitle() {
+    const nextTitle = draftTitle.trim() || "Untitled";
+
+    setDraftTitle(nextTitle);
+
+    if (nextTitle !== title) {
+      await onSaveTitle(nextTitle);
+    }
+  }
+
+  return (
+    <input
+      aria-label={ariaLabel}
+      className="document-title-input"
+      onBlur={() => void saveTitle()}
+      onChange={(event) => setDraftTitle(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+      type="text"
+      value={draftTitle}
+    />
+  );
+}
+
+function TitleOnlyEditor({
+  eyebrow,
+  onSaveTitle,
+  title,
+}: {
+  eyebrow: string;
+  onSaveTitle: (title: string) => Promise<unknown>;
+  title: string;
+}) {
+  return (
+    <article className="editor-frame">
+      <header className="document-heading">
+        <p>{eyebrow}</p>
+        <EditableTitle
+          ariaLabel="Document title"
+          onSaveTitle={onSaveTitle}
+          title={title}
+        />
+      </header>
+      <p className="editor-title-only-note">
+        Create or select a document to edit markdown content.
+      </p>
+    </article>
   );
 }
 
 function SessionDocumentEditor({
   documentId,
   initialMarkdown,
+  isCampaignDocument,
+  sessionId,
   sessionName,
+  supportsSlashCommands,
   title,
 }: {
   documentId: string;
   initialMarkdown: string;
+  isCampaignDocument: boolean;
+  sessionId?: string;
   sessionName: string;
+  supportsSlashCommands: boolean;
   title: string;
 }) {
   const saveTimeoutRef = useRef<number | null>(null);
@@ -133,14 +640,14 @@ function SessionDocumentEditor({
   const [selectedSlashOptionIndex, setSelectedSlashOptionIndex] = useState(0);
 
   const filteredSlashMenuOptions = useMemo(() => {
-    if (!slashMenu) {
+    if (!slashMenu || !supportsSlashCommands) {
       return [];
     }
 
     return SLASH_MENU_OPTIONS.filter((option) =>
       commandOptionMatches(option, slashMenu.query),
     );
-  }, [slashMenu]);
+  }, [slashMenu, supportsSlashCommands]);
 
   function flushPendingSave() {
     if (!pendingSaveRef.current) {
@@ -161,15 +668,17 @@ function SessionDocumentEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit,
-      CombatTurnBlockExtension,
-      CombatSpaceExtension,
-      ResultBlockExtension,
-      InlineResultBlockExtension,
-      SceneContainerExtension,
-      SlashCommandExtension,
-    ],
+    extensions: supportsSlashCommands
+      ? [
+          StarterKit,
+          CombatTurnBlockExtension,
+          CombatSpaceExtension,
+          ResultBlockExtension,
+          InlineResultBlockExtension,
+          SceneContainerExtension,
+          SlashCommandExtension,
+        ]
+      : [StarterKit],
     content: markdownToTiptapJson(initialMarkdown),
     editorProps: {
       attributes: {
@@ -199,8 +708,8 @@ function SessionDocumentEditor({
   }, [documentId]);
 
   const updateSlashMenu = useCallback(() => {
-    setSlashMenu(editor ? getSlashMenuState(editor) : null);
-  }, [editor]);
+    setSlashMenu(editor && supportsSlashCommands ? getSlashMenuState(editor) : null);
+  }, [editor, supportsSlashCommands]);
 
   const hideSlashMenu = useCallback(() => {
     setSlashMenu(null);
@@ -243,9 +752,13 @@ function SessionDocumentEditor({
   }, [filteredSlashMenuOptions.length, selectedSlashOptionIndex]);
 
   useEffect(() => {
-    if (!editor) {
+    if (!editor || !supportsSlashCommands) {
       return;
     }
+
+    const mountedEditor = editor;
+    let editorDom: HTMLElement | null = null;
+    let animationFrameId: number | null = null;
 
     function handleSlashMenuKeyDown(event: KeyboardEvent) {
       if (!slashMenu) {
@@ -288,10 +801,25 @@ function SessionDocumentEditor({
       }
     }
 
-    editor.view.dom.addEventListener("keydown", handleSlashMenuKeyDown, true);
+    function attachKeyDownHandler() {
+      editorDom = getEditorDom(mountedEditor);
+
+      if (!editorDom) {
+        animationFrameId = window.requestAnimationFrame(attachKeyDownHandler);
+        return;
+      }
+
+      editorDom.addEventListener("keydown", handleSlashMenuKeyDown, true);
+    }
+
+    attachKeyDownHandler();
 
     return () => {
-      editor.view.dom.removeEventListener("keydown", handleSlashMenuKeyDown, true);
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+
+      editorDom?.removeEventListener("keydown", handleSlashMenuKeyDown, true);
     };
   }, [
     editor,
@@ -299,6 +827,7 @@ function SessionDocumentEditor({
     hideSlashMenu,
     selectedSlashOptionIndex,
     slashMenu,
+    supportsSlashCommands,
   ]);
 
   function insertSlashCommand(prefix: string) {
@@ -326,10 +855,22 @@ function SessionDocumentEditor({
     <article className="editor-frame" key={documentId}>
       <header className="document-heading">
         <p>{sessionName}</p>
-        <h2>{title}</h2>
+        <EditableTitle
+          ariaLabel="Document title"
+          onSaveTitle={async (nextTitle) => {
+            await appStore.saveDocument(documentId, {
+              title: nextTitle,
+            });
+
+            if (isCampaignDocument && sessionId) {
+              await appStore.renameSession(sessionId, nextTitle);
+            }
+          }}
+          title={title}
+        />
       </header>
       <EditorContent className="tiptap-editor" editor={editor} />
-      {slashMenu ? (
+      {slashMenu && supportsSlashCommands ? (
         <div
           aria-label="Slash command menu"
           className="slash-menu"

@@ -58,6 +58,7 @@ export class SessionRepository {
 
   async update(input: {
     id: string;
+    documentId?: string;
     name?: string;
     chaosFactor?: number;
     activeCharacterSheetId?: string | null;
@@ -70,6 +71,7 @@ export class SessionRepository {
 
     const updated: SessionRecord = {
       ...current,
+      documentId: input.documentId ?? current.documentId,
       name: input.name ?? current.name,
       chaosFactor: input.chaosFactor ?? current.chaosFactor,
       activeCharacterSheetId:
@@ -82,12 +84,14 @@ export class SessionRepository {
     await this.db.execute(
       `UPDATE sessions
        SET name = $1,
-           chaos_factor = $2,
-           active_character_sheet_id = $3,
-           updated_at = $4
-       WHERE id = $5`,
+           document_id = $2,
+           chaos_factor = $3,
+           active_character_sheet_id = $4,
+           updated_at = $5
+       WHERE id = $6`,
       [
         updated.name,
+        updated.documentId,
         updated.chaosFactor,
         updated.activeCharacterSheetId ?? null,
         updated.updatedAt,
@@ -101,11 +105,13 @@ export class SessionRepository {
   async create(input: { name: string; chaosFactor?: number }) {
     const timestamp = nowIso();
     const sessionId = createId("session");
-    const documentId = createId("document");
+    const campaignDocumentId = createId("document");
+    const charactersFolderId = createId("folder");
+    const sessionsFolderId = createId("folder");
     const session: SessionRecord = {
       id: sessionId,
       name: input.name,
-      documentId,
+      documentId: campaignDocumentId,
       chaosFactor: input.chaosFactor ?? 5,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -128,11 +134,14 @@ export class SessionRepository {
 
     await this.db.execute(
       `INSERT INTO documents
-       (id, session_id, title, content_markdown, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       (id, session_id, parent_id, kind, folder_kind, title, content_markdown, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
-        documentId,
+        campaignDocumentId,
         sessionId,
+        null,
+        "document",
+        null,
         input.name,
         "",
         timestamp,
@@ -140,7 +149,50 @@ export class SessionRepository {
       ],
     );
 
+    await this.db.execute(
+      `INSERT INTO documents
+       (id, session_id, parent_id, kind, folder_kind, title, content_markdown, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        charactersFolderId,
+        sessionId,
+        null,
+        "folder",
+        "characters",
+        "Characters",
+        "",
+        timestamp,
+        timestamp,
+      ],
+    );
+
+    await this.db.execute(
+      `INSERT INTO documents
+       (id, session_id, parent_id, kind, folder_kind, title, content_markdown, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        sessionsFolderId,
+        sessionId,
+        null,
+        "folder",
+        "sessions",
+        "Sessions",
+        "",
+        timestamp,
+        timestamp,
+      ],
+    );
+
     return session;
+  }
+
+  async delete(id: string) {
+    await this.db.execute(`DELETE FROM documents WHERE session_id = $1`, [id]);
+    await this.db.execute(`DELETE FROM character_sheets WHERE session_id = $1`, [
+      id,
+    ]);
+    await this.db.execute(`DELETE FROM combat_states WHERE session_id = $1`, [id]);
+    await this.db.execute(`DELETE FROM sessions WHERE id = $1`, [id]);
   }
 }
 

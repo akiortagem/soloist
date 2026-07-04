@@ -145,6 +145,8 @@ export class CharacterSheetRepository {
     id: string;
     name?: string;
     nick?: string | null;
+    templateId?: string | null;
+    templateName?: string | null;
     fields?: CharacterField[];
   }) {
     const current = await this.get(input.id);
@@ -157,6 +159,12 @@ export class CharacterSheetRepository {
       ...current,
       name: input.name ?? current.name,
       nick: input.nick === undefined ? current.nick : (input.nick ?? undefined),
+      templateId:
+        input.templateId === undefined ? current.templateId : (input.templateId ?? undefined),
+      templateName:
+        input.templateName === undefined
+          ? current.templateName
+          : (input.templateName ?? undefined),
       fields: input.fields ?? current.fields,
       updatedAt: nowIso(),
     };
@@ -165,12 +173,16 @@ export class CharacterSheetRepository {
       `UPDATE character_sheets
        SET name = $1,
            nick = $2,
-           fields_json = $3,
-           updated_at = $4
-       WHERE id = $5`,
+           template_id = $3,
+           template_name = $4,
+           fields_json = $5,
+           updated_at = $6
+       WHERE id = $7`,
       [
         updated.name,
         updated.nick ?? null,
+        updated.templateId ?? null,
+        updated.templateName ?? null,
         JSON.stringify(updated.fields),
         updated.updatedAt,
         updated.id,
