@@ -18,6 +18,10 @@ import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTe
 import type { Document } from "../domain/domainTypes";
 import { CombatPanel } from "../combat/CombatPanel";
 import { Editor } from "../editor/Editor";
+import {
+  getActiveOracleProvider,
+  getOracleProvider,
+} from "../oracle/oracleRegistry";
 import { appStore, useAppStore } from "../state/appStore";
 
 const navigationRoutes = [
@@ -127,6 +131,7 @@ function DocumentMenu({
 export function App() {
   const {
     activeDocument,
+    activeOracleProviderId,
     activeSession,
     campaignDocuments,
     chaosFactor,
@@ -137,6 +142,8 @@ export function App() {
     rightPanelCloseRequest,
     rightPanelOpenRequest,
   } = useAppStore();
+  const activeOracleProvider =
+    getOracleProvider(activeOracleProviderId) ?? getActiveOracleProvider();
   const [leftPanelWidth, setLeftPanelWidth] = useState(LEFT_PANEL_MIN_WIDTH);
   const [isResizingLeftPanel, setIsResizingLeftPanel] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
@@ -716,7 +723,7 @@ export function App() {
                 <dl>
                   <div>
                     <dt>Provider</dt>
-                    <dd>Demo oracle</dd>
+                    <dd>{activeOracleProvider.name}</dd>
                   </div>
                   <div>
                     <dt>Chaos Factor</dt>

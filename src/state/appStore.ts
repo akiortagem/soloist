@@ -27,6 +27,10 @@ import {
   normalizeCombatState,
 } from "../combat/combatLogic";
 import { ensureOnboardingContent } from "../onboarding/onboardingContent";
+import {
+  getActiveOracleProvider,
+  setActiveOracleProvider,
+} from "../oracle/oracleRegistry";
 import { createRepositories } from "../persistence/sessionRepository";
 
 export type AppRoute =
@@ -50,6 +54,7 @@ export type AppState = {
   activeTemplate: CharacterSheetTemplate | null;
   combatState: CombatState | null;
   chaosFactor: number;
+  activeOracleProviderId: string;
   isLoadingSessions: boolean;
   isCreatingSession: boolean;
   isLoadingTemplates: boolean;
@@ -62,6 +67,7 @@ export type AppState = {
 };
 
 const DEFAULT_CHAOS_FACTOR = 5;
+const ACTIVE_ORACLE_PROVIDER_SETTING_KEY = "oracle.activeProviderId";
 const MAX_COMBATANT_FIELDS = 3;
 const MAX_COMBAT_TEXT_LENGTH = 15;
 
@@ -156,6 +162,7 @@ const initialState: AppState = {
   activeTemplate: null,
   combatState: null,
   chaosFactor: DEFAULT_CHAOS_FACTOR,
+  activeOracleProviderId: getActiveOracleProvider().id,
   isLoadingSessions: true,
   isCreatingSession: false,
   isLoadingTemplates: false,
@@ -180,6 +187,15 @@ function getActiveSession(sessions: Session[], activeSessionId?: string) {
     sessions[0] ??
     null
   );
+}
+
+function parseActiveOracleProviderId(valueJson: string) {
+  try {
+    const parsed = JSON.parse(valueJson);
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function loadActiveSessionData(activeSession: Session | null) {
@@ -346,6 +362,15 @@ export const appStore = {
     try {
       const repositories = await createRepositories();
       await ensureOnboardingContent(repositories);
+      const activeOracleProviderSetting = await repositories.settings.get(
+        ACTIVE_ORACLE_PROVIDER_SETTING_KEY,
+      );
+      const activeOracleProvider = setActiveOracleProvider(
+        activeOracleProviderSetting
+          ? (parseActiveOracleProviderId(activeOracleProviderSetting.valueJson) ??
+              "")
+          : getActiveOracleProvider().id,
+      );
       const sessions = await repositories.sessions.list();
       const activeSession = getActiveSession(sessions, state.activeSessionId);
 
@@ -353,6 +378,7 @@ export const appStore = {
         sessions,
         activeSessionId: activeSession?.id,
         activeSession,
+        activeOracleProviderId: activeOracleProvider.id,
         persistenceMessage:
           sessions.length > 0
             ? `Read ${sessions.length} session${
@@ -422,6 +448,31 @@ export const appStore = {
     } finally {
       setState({ isLoadingTemplates: false });
     }
+  },
+
+  async selectOracleProvider(providerId: string) {
+    const activeOracleProvider = setActiveOracleProvider(providerId);
+
+    try {
+      const repositories = await createRepositories();
+      await repositories.settings.set({
+        key: ACTIVE_ORACLE_PROVIDER_SETTING_KEY,
+        valueJson: JSON.stringify(activeOracleProvider.id),
+      });
+
+      setState({
+        activeOracleProviderId: activeOracleProvider.id,
+        persistenceError: undefined,
+      });
+    } catch (error) {
+      setState({
+        activeOracleProviderId: activeOracleProvider.id,
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Oracle provider setting save failed.",
+      });
+    }
+
+    return activeOracleProvider;
   },
 
   selectTemplate(templateId: string) {
