@@ -23,6 +23,7 @@ export type SlashCommandDefinition = {
   commandText?: string;
   source: SlashCommandSource;
   pluginId?: string;
+  tableId?: string;
   parse?: SlashCommandParser;
 };
 

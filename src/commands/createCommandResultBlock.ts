@@ -2,6 +2,7 @@ import type {
   ParsedAskCommand,
   ParsedChaosCommand,
   ParsedInvalidCommand,
+  ParsedPluginRandomTableCommand,
   ParsedRollCommand,
   ParsedStatCommand,
   ParsedTrackerStatCommand,
@@ -9,7 +10,7 @@ import type {
 } from "./commandTypes";
 import { rollDice } from "../dice/rollDice";
 import type { ResultBlock } from "../domain/domainTypes";
-import { getActiveOracleProvider } from "../oracle/oracleRegistry";
+import { getActiveOracleProvider, oracleTableRegistry } from "../oracle/oracleRegistry";
 import type { ChaosDeltaResult, StatDeltaResult } from "../state/appStore";
 
 export type ResultBlockType = ResultBlock["type"];
@@ -154,6 +155,71 @@ export function createChaosCommandResultBlock(
       delta: result.delta,
       beforeValue: result.beforeValue,
       afterValue: result.afterValue,
+    },
+  });
+}
+
+export function createPluginRandomTableCommandResultBlock(
+  command: ParsedPluginRandomTableCommand,
+): ResultBlock {
+  const table = oracleTableRegistry.get(command.tableId);
+
+  if (!table) {
+    return createResultBlock("error", {
+      commandText: command.raw,
+      payload: {
+        commandName: command.commandName,
+        pluginId: command.pluginId,
+        tableId: command.tableId,
+        reason: `Random table not found: ${command.tableId}`,
+      },
+    });
+  }
+
+  if (table.entries.length === 0) {
+    return createResultBlock("error", {
+      commandText: command.raw,
+      payload: {
+        commandName: command.commandName,
+        pluginId: command.pluginId,
+        tableId: command.tableId,
+        tableName: table.name,
+        reason: `Random table has no entries: ${table.name}`,
+      },
+    });
+  }
+
+  const rolled = rollDice(table.dice);
+  const matchingEntry = rolled.ok
+    ? table.entries.find(
+        (entry) =>
+          rolled.value.total >= entry.min && rolled.value.total <= entry.max,
+      )
+    : undefined;
+  const entry =
+    matchingEntry ??
+    table.entries[Math.floor(Math.random() * table.entries.length)];
+
+  return createResultBlock("oracle", {
+    commandText: command.raw,
+    collapsed: true,
+    payload: {
+      pluginId: command.pluginId,
+      tableId: table.contributionId,
+      tableName: table.name,
+      entry: {
+        id: entry.id,
+        text: entry.text,
+        min: entry.min,
+        max: entry.max,
+      },
+      roll: rolled.ok
+        ? {
+            formula: rolled.value.formula,
+            total: rolled.value.total,
+            terms: rolled.value.terms,
+          }
+        : undefined,
     },
   });
 }

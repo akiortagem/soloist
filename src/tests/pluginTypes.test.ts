@@ -17,6 +17,29 @@ const validManifest = {
         description: "Roll an Ironsworn move.",
         commandText: "/roll 2d10",
       },
+      {
+        id: "omen",
+        name: "omen",
+        label: "Draw Omen",
+        prefix: "/omen",
+        description: "Draw an omen from a plugin table.",
+        tableId: "omens",
+      },
+    ],
+    randomTables: [
+      {
+        id: "omens",
+        name: "Omens",
+        dice: "1d100",
+        entries: [
+          {
+            id: "storm",
+            min: 1,
+            max: 100,
+            text: "A storm gathers beyond the ridge.",
+          },
+        ],
+      },
     ],
     oracleTables: [
       {
@@ -84,6 +107,10 @@ describe("plugin manifest validation", () => {
     expect(result.manifest.id).toBe("soloist-plugin.ironsworn");
     expect(result.manifest.contributes?.oracleTables?.[0].entries[0].text).toBe(
       "Scheme",
+    );
+    expect(result.manifest.contributes?.randomTables?.[0].id).toBe("omens");
+    expect(result.manifest.contributes?.slashCommands?.[1].tableId).toBe(
+      "omens",
     );
   });
 

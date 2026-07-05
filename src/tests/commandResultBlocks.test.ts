@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type {
   ParsedAskCommand,
   ParsedChaosCommand,
   ParsedInvalidCommand,
+  ParsedPluginRandomTableCommand,
   ParsedRollCommand,
   ParsedStatCommand,
 } from "../commands/commandTypes";
@@ -11,15 +12,21 @@ import {
   createAskCommandResultBlock,
   createChaosCommandResultBlock,
   createInvalidCommandResultBlock,
+  createPluginRandomTableCommandResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
 } from "../editor/resultBlocks/createResultBlock";
+import { oracleTableRegistry } from "../oracle/oracleRegistry";
 
 function payloadRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
 }
 
 describe("command result blocks", () => {
+  afterEach(() => {
+    oracleTableRegistry.unregisterPlugin("soloist-plugin.test-omens");
+  });
+
   it("creates a roll result block from a parsed /roll command", () => {
     const command: ParsedRollCommand = {
       type: "roll",
@@ -123,5 +130,66 @@ describe("command result blocks", () => {
     expect(payload.delta).toBe(1);
     expect(payload.beforeValue).toBe(4);
     expect(payload.afterValue).toBe(5);
+  });
+
+  it("creates an oracle result block from a plugin random table command", () => {
+    oracleTableRegistry.register({
+      id: "soloist-plugin.test-omens:omens",
+      contributionId: "omens",
+      pluginId: "soloist-plugin.test-omens",
+      source: "plugin",
+      name: "Omens",
+      dice: "1d100",
+      entries: [
+        {
+          id: "storm",
+          min: 1,
+          max: 100,
+          text: "A storm gathers beyond the ridge.",
+        },
+      ],
+    });
+    const command: ParsedPluginRandomTableCommand = {
+      type: "pluginRandomTable",
+      raw: "/omen",
+      commandName: "omen",
+      pluginId: "soloist-plugin.test-omens",
+      tableId: "soloist-plugin.test-omens:omens",
+    };
+
+    const block = createPluginRandomTableCommandResultBlock(command);
+    const payload = payloadRecord(block.payload);
+    const entry = payloadRecord(payload.entry);
+    const roll = payloadRecord(payload.roll);
+
+    expect(block.type).toBe("oracle");
+    expect(block.commandText).toBe("/omen");
+    expect(block.collapsed).toBe(true);
+    expect(payload.pluginId).toBe("soloist-plugin.test-omens");
+    expect(payload.tableId).toBe("omens");
+    expect(payload.tableName).toBe("Omens");
+    expect(entry.id).toBe("storm");
+    expect(entry.text).toBe("A storm gathers beyond the ridge.");
+    expect(typeof roll.total).toBe("number");
+  });
+
+  it("creates an error result block for a missing plugin random table", () => {
+    const command: ParsedPluginRandomTableCommand = {
+      type: "pluginRandomTable",
+      raw: "/omen",
+      commandName: "omen",
+      pluginId: "soloist-plugin.test-omens",
+      tableId: "soloist-plugin.test-omens:missing",
+    };
+
+    const block = createPluginRandomTableCommandResultBlock(command);
+    const payload = payloadRecord(block.payload);
+
+    expect(block.type).toBe("error");
+    expect(payload.pluginId).toBe("soloist-plugin.test-omens");
+    expect(payload.tableId).toBe("soloist-plugin.test-omens:missing");
+    expect(payload.reason).toBe(
+      "Random table not found: soloist-plugin.test-omens:missing",
+    );
   });
 });

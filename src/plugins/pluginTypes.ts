@@ -16,6 +16,7 @@ export type PluginManifest = {
 
 export type PluginContributions = {
   slashCommands?: DataSlashCommandContribution[];
+  randomTables?: OracleTableContribution[];
   oracleTables?: OracleTableContribution[];
   characterSheetTemplates?: CharacterSheetTemplateContribution[];
 };
@@ -26,7 +27,8 @@ export type DataSlashCommandContribution = {
   label: string;
   prefix: string;
   description?: string;
-  commandText: string;
+  commandText?: string;
+  tableId?: string;
 };
 
 export type OracleTableContribution = {
@@ -86,6 +88,7 @@ const MANIFEST_KEYS = [
 
 const CONTRIBUTION_KEYS = [
   "slashCommands",
+  "randomTables",
   "oracleTables",
   "characterSheetTemplates",
 ] as const;
@@ -97,6 +100,7 @@ const SLASH_COMMAND_KEYS = [
   "prefix",
   "description",
   "commandText",
+  "tableId",
 ] as const;
 
 const ORACLE_TABLE_KEYS = [
@@ -211,6 +215,13 @@ function validateContributions(
   );
   validateOptionalArray(
     value,
+    "randomTables",
+    path,
+    context,
+    validateOracleTableContribution,
+  );
+  validateOptionalArray(
+    value,
     "oracleTables",
     path,
     context,
@@ -240,8 +251,18 @@ function validateSlashCommandContribution(
   requireString(value, "name", path, context);
   requireString(value, "label", path, context);
   requireString(value, "prefix", path, context);
-  requireString(value, "commandText", path, context);
   optionalString(value, "description", path, context);
+  optionalString(value, "commandText", path, context);
+  optionalString(value, "tableId", path, context);
+
+  if (!hasOwn(value, "commandText") && !hasOwn(value, "tableId")) {
+    addError(
+      context,
+      `${path}.commandText`,
+      "MISSING_FIELD",
+      "Slash command requires commandText or tableId",
+    );
+  }
 }
 
 function validateOracleTableContribution(

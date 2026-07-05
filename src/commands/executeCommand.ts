@@ -12,6 +12,7 @@ import {
   createAskCommandResultBlock,
   createChaosCommandResultBlock,
   createInvalidCommandResultBlock,
+  createPluginRandomTableCommandResultBlock,
   createResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
@@ -132,6 +133,8 @@ function createCommandResultBlock(
         command,
         appStore.applyChaosDelta({ delta: command.delta }),
       );
+    case "pluginRandomTable":
+      return createPluginRandomTableCommandResultBlock(command);
     case "invalid":
       return createInvalidCommandResultBlock(command);
     case "unknown":

@@ -143,6 +143,10 @@ export class PluginManager {
     const counts: PluginContributionCounts = { ...EMPTY_COUNTS };
 
     for (const contribution of contributions?.slashCommands ?? []) {
+      const tableId = contribution.tableId
+        ? createContributionId(plugin.id, contribution.tableId)
+        : undefined;
+
       this.registries.slashCommands.register({
         id: createContributionId(plugin.id, contribution.id),
         name: contribution.name,
@@ -152,11 +156,24 @@ export class PluginManager {
         commandText: contribution.commandText,
         source: "plugin",
         pluginId: plugin.id,
+        tableId,
+        parse: tableId
+          ? ({ raw, commandName }) => ({
+              type: "pluginRandomTable",
+              raw,
+              commandName,
+              pluginId: plugin.id,
+              tableId,
+            })
+          : undefined,
       } satisfies SlashCommandDefinition);
       counts.slashCommands += 1;
     }
 
-    for (const contribution of contributions?.oracleTables ?? []) {
+    for (const contribution of [
+      ...(contributions?.randomTables ?? []),
+      ...(contributions?.oracleTables ?? []),
+    ]) {
       this.registries.oracleTables.register({
         ...contribution,
         id: createContributionId(plugin.id, contribution.id),

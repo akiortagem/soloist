@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CharacterSheetTemplateRegistry } from "../characterSheets/characterSheetTemplateRegistry";
+import { parseCommand } from "../commands/parseCommand";
 import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
 import { OracleTableRegistry } from "../oracle/oracleRegistry";
 import type {
@@ -24,6 +25,21 @@ const validManifest: PluginManifest = {
         label: "Roll Move",
         prefix: "/move ",
         commandText: "/roll 2d10",
+      },
+      {
+        id: "omen",
+        name: "omen",
+        label: "Draw Omen",
+        prefix: "/omen",
+        tableId: "omens",
+      },
+    ],
+    randomTables: [
+      {
+        id: "omens",
+        name: "Omens",
+        dice: "1d100",
+        entries: [{ id: "storm", min: 1, max: 100, text: "Storm" }],
       },
     ],
     oracleTables: [
@@ -110,8 +126,8 @@ describe("PluginManager", () => {
         pluginId: validManifest.id,
         status: "loaded",
         contributions: {
-          slashCommands: 1,
-          oracleTables: 1,
+          slashCommands: 2,
+          oracleTables: 2,
           characterSheetTemplates: 1,
         },
       },
@@ -121,6 +137,22 @@ describe("PluginManager", () => {
       pluginId: validManifest.id,
       commandText: "/roll 2d10",
     });
+    expect(registries.slashCommands.getByName("omen")).toMatchObject({
+      id: "soloist-plugin.ironsworn:omen",
+      pluginId: validManifest.id,
+      tableId: "soloist-plugin.ironsworn:omens",
+    });
+    expect(parseCommand("/omen", registries.slashCommands)).toEqual({
+      type: "pluginRandomTable",
+      raw: "/omen",
+      commandName: "omen",
+      pluginId: validManifest.id,
+      tableId: "soloist-plugin.ironsworn:omens",
+    });
+    expect(
+      registries.oracleTables.get("soloist-plugin.ironsworn:omens")?.entries[0]
+        .text,
+    ).toBe("Storm");
     expect(
       registries.oracleTables.get("soloist-plugin.ironsworn:action")?.entries[0]
         .text,
@@ -150,6 +182,10 @@ describe("PluginManager", () => {
       status: "disabled",
     });
     expect(registries.slashCommands.getByName("move")).toBeUndefined();
+    expect(registries.slashCommands.getByName("omen")).toBeUndefined();
+    expect(
+      registries.oracleTables.get("soloist-plugin.ironsworn:omens"),
+    ).toBeUndefined();
     expect(
       registries.oracleTables.get("soloist-plugin.ironsworn:action"),
     ).toBeUndefined();

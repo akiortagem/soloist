@@ -49,6 +49,14 @@ export type ParsedChaosCommand = {
   delta: number;
 };
 
+export type ParsedPluginRandomTableCommand = {
+  type: "pluginRandomTable";
+  raw: string;
+  commandName: string;
+  pluginId: string;
+  tableId: string;
+};
+
 export type ParsedUnknownCommand = {
   type: "unknown";
   raw: string;
@@ -71,5 +79,6 @@ export type ParsedCommand =
   | ParsedStatCommand
   | ParsedTrackerStatCommand
   | ParsedChaosCommand
+  | ParsedPluginRandomTableCommand
   | ParsedInvalidCommand
   | ParsedUnknownCommand;
