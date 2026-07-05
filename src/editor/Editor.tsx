@@ -23,6 +23,10 @@ import {
   isTemplateLayout,
   isTemplateSeparator,
 } from "../characterSheets/characterSheetTemplateLogic";
+import {
+  slashCommandRegistry,
+  type SlashCommandDefinition,
+} from "../commands/slashCommandRegistry";
 import { appStore, useAppStore } from "../state/appStore";
 import { InlineResultBlockExtension } from "./extensions/InlineResultBlockExtension";
 import { CombatSpaceExtension } from "./extensions/CombatSpaceExtension";
@@ -33,15 +37,6 @@ import { SlashCommandExtension } from "./extensions/SlashCommandExtension";
 import { markdownToTiptapJson, tiptapJsonToMarkdown } from "./markdown";
 
 const SAVE_DEBOUNCE_MS = 600;
-
-const SLASH_MENU_OPTIONS = [
-  { label: "Roll Dice", prefix: "/roll " },
-  { label: "Ask Oracle", prefix: "/ask " },
-  { label: "Start Scene", prefix: "/scene" },
-  { label: "Start Combat", prefix: "/combat" },
-  { label: "Modify Stat", prefix: "/stat " },
-  { label: "Modify Chaos", prefix: "/chaos " },
-] as const;
 
 type SlashMenuState = {
   from: number;
@@ -98,7 +93,7 @@ function getSlashMenuState(editor: TiptapEditor): SlashMenuState | null {
 }
 
 function commandOptionMatches(
-  option: (typeof SLASH_MENU_OPTIONS)[number],
+  option: SlashCommandDefinition,
   query: string,
 ): boolean {
   if (query.length === 0) {
@@ -644,7 +639,7 @@ function SessionDocumentEditor({
       return [];
     }
 
-    return SLASH_MENU_OPTIONS.filter((option) =>
+    return slashCommandRegistry.list().filter((option) =>
       commandOptionMatches(option, slashMenu.query),
     );
   }, [slashMenu, supportsSlashCommands]);
@@ -883,7 +878,7 @@ function SessionDocumentEditor({
           {filteredSlashMenuOptions.length > 0 ? (
             filteredSlashMenuOptions.map((option, optionIndex) => (
               <button
-                key={option.prefix}
+                key={option.id}
                 aria-selected={optionIndex === selectedSlashOptionIndex}
                 className={
                   optionIndex === selectedSlashOptionIndex ? "is-selected" : undefined
