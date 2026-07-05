@@ -4,6 +4,7 @@ import { CombatRepository } from "./combatRepository";
 import { getDatabase } from "./database";
 import { DocumentRepository } from "./documentRepository";
 import { createId, nowIso } from "./id";
+import { PluginRepository } from "./pluginRepository";
 import { SettingsRepository } from "./settingsRepository";
 import type { Session } from "../domain/domainTypes";
 
@@ -203,6 +204,7 @@ export async function createRepositories() {
     characterSheets: new CharacterSheetRepository(db),
     combat: new CombatRepository(db),
     documents: new DocumentRepository(db),
+    plugins: new PluginRepository(db),
     sessions: new SessionRepository(db),
     settings: new SettingsRepository(db),
   };
