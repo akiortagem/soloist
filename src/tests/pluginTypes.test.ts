@@ -1,0 +1,206 @@
+import { describe, expect, it } from "vitest";
+import { validatePluginManifest } from "../plugins/pluginTypes";
+
+const validManifest = {
+  id: "soloist-plugin.ironsworn",
+  name: "Ironsworn Data",
+  version: "1.0.0",
+  soloistApiVersion: "1",
+  type: "data",
+  contributes: {
+    slashCommands: [
+      {
+        id: "oracle.move",
+        name: "move",
+        label: "Roll Move",
+        prefix: "/move ",
+        description: "Roll an Ironsworn move.",
+        commandText: "/roll 2d10",
+      },
+    ],
+    oracleTables: [
+      {
+        id: "action",
+        name: "Action",
+        dice: "1d100",
+        entries: [
+          {
+            id: "scheme",
+            min: 1,
+            max: 2,
+            text: "Scheme",
+          },
+          {
+            id: "clash",
+            min: 3,
+            max: 4,
+            text: "Clash",
+          },
+        ],
+      },
+    ],
+    characterSheetTemplates: [
+      {
+        id: "ironlander",
+        name: "Ironlander",
+        fields: [
+          {
+            id: "edge",
+            name: "Edge",
+            type: "number",
+            defaultValue: 1,
+          },
+          {
+            id: "momentum",
+            kind: "group",
+            name: "Momentum",
+            fields: [
+              {
+                id: "current_momentum",
+                kind: "field",
+                name: "Current",
+                type: "number",
+                defaultValue: 2,
+              },
+            ],
+          },
+          {
+            id: "notes_separator",
+            kind: "separator",
+            label: "Notes",
+          },
+        ],
+      },
+    ],
+  },
+} as const;
+
+describe("plugin manifest validation", () => {
+  it("accepts a valid data plugin manifest", () => {
+    const result = validatePluginManifest(validManifest);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manifest.id).toBe("soloist-plugin.ironsworn");
+    expect(result.manifest.contributes?.oracleTables?.[0].entries[0].text).toBe(
+      "Scheme",
+    );
+  });
+
+  it("rejects missing required fields", () => {
+    const { name: _name, ...manifestWithoutName } = validManifest;
+    const result = validatePluginManifest({
+      ...manifestWithoutName,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.name",
+      code: "MISSING_FIELD",
+      message: "Missing required field: name",
+    });
+  });
+
+  it("rejects an unknown plugin type", () => {
+    const result = validatePluginManifest({
+      ...validManifest,
+      type: "script",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.type",
+      code: "UNKNOWN_PLUGIN_TYPE",
+      message: 'Plugin type must be "data"',
+    });
+  });
+
+  it("rejects an unknown contribution type", () => {
+    const result = validatePluginManifest({
+      ...validManifest,
+      contributes: {
+        ...validManifest.contributes,
+        scripts: [],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.contributes.scripts",
+      code: "UNKNOWN_CONTRIBUTION_TYPE",
+      message: "Unknown contribution type: scripts",
+    });
+  });
+
+  it("rejects unknown fields inside contribution payloads", () => {
+    const result = validatePluginManifest({
+      ...validManifest,
+      contributes: {
+        oracleTables: [
+          {
+            id: "action",
+            name: "Action",
+            dice: "1d100",
+            entries: [
+              {
+                id: "scheme",
+                min: 1,
+                max: 2,
+                text: "Scheme",
+                weight: 2,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.contributes.oracleTables[0].entries[0].weight",
+      code: "UNKNOWN_FIELD",
+      message: "Unknown field: weight",
+    });
+  });
+
+  it("returns displayable validation errors with paths", () => {
+    const result = validatePluginManifest({
+      id: "",
+      name: "Broken",
+      version: "1.0.0",
+      soloistApiVersion: "1",
+      type: "data",
+      contributes: {
+        oracleTables: [
+          {
+            id: "bad-table",
+            name: "Bad Table",
+            dice: "1d6",
+            entries: [{ id: "bad-entry", min: 6, max: 1, text: "Broken" }],
+          },
+        ],
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual(
+      expect.arrayContaining([
+        {
+          path: "$.id",
+          code: "EMPTY_STRING",
+          message: "id cannot be empty",
+        },
+        {
+          path: "$.contributes.oracleTables[0].entries[0].min",
+          code: "INVALID_NUMBER",
+          message: "Oracle table entry min cannot be greater than max",
+        },
+      ]),
+    );
+  });
+});
