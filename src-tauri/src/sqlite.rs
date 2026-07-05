@@ -197,5 +197,36 @@ pub fn migrations() -> Vec<Migration> {
             sql: "ALTER TABLE documents ADD COLUMN character_sheet_id TEXT;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 17,
+            description: "create_installed_plugins",
+            sql: r#"
+            CREATE TABLE IF NOT EXISTS installed_plugins (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                type TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                manifest_json TEXT NOT NULL,
+                installed_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+"#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 18,
+            description: "create_plugin_storage",
+            sql: r#"
+            CREATE TABLE IF NOT EXISTS plugin_storage (
+                plugin_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value_json TEXT NOT NULL,
+                PRIMARY KEY (plugin_id, key),
+                FOREIGN KEY (plugin_id) REFERENCES installed_plugins(id) ON DELETE CASCADE
+            );
+"#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
