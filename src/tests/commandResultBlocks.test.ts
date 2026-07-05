@@ -63,7 +63,7 @@ describe("command result blocks", () => {
       question: "Is the guard asleep?",
     };
 
-    const block = createAskCommandResultBlock(command);
+    const block = createAskCommandResultBlock(command, 7);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("oracle");
@@ -71,6 +71,7 @@ describe("command result blocks", () => {
     expect(block.collapsed).toBe(true);
     expect(payload.question).toBe("Is the guard asleep?");
     expect(payload.odds).toBe("likely");
+    expect(payload.chaosFactor).toBe(7);
     expect(payload.answer === "Yes" || payload.answer === "No").toBe(true);
   });
 

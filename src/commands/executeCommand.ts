@@ -20,6 +20,7 @@ import {
 
 export type CommandExecutionContext = {
   isInsideCombatSpace: boolean;
+  chaosFactor: number;
 };
 
 export type CommandExecutionResult =
@@ -98,10 +99,13 @@ function createCombatTurnPayload(input: {
   };
 }
 
-function createCommandResultBlock(command: ParsedCommand): ResultBlock {
+function createCommandResultBlock(
+  command: ParsedCommand,
+  context: CommandExecutionContext,
+): ResultBlock {
   switch (command.type) {
     case "ask":
-      return createAskCommandResultBlock(command);
+      return createAskCommandResultBlock(command, context.chaosFactor);
     case "roll":
       return createRollCommandResultBlock(command);
     case "stat":
@@ -299,5 +303,5 @@ export function executeCommand(
     return executeCombatCommand(command, snapshot, context);
   }
 
-  return resultBlockAction(createCommandResultBlock(command));
+  return resultBlockAction(createCommandResultBlock(command, context));
 }

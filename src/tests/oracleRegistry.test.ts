@@ -80,12 +80,15 @@ describe("oracle registry", () => {
     registerOracleProvider(testOracleProvider);
     setActiveOracleProvider(testOracleProvider.id);
 
-    const block = createAskCommandResultBlock({
-      type: "ask",
-      raw: "/ask likely Is the gate open?",
-      odds: "likely",
-      question: "Is the gate open?",
-    });
+    const block = createAskCommandResultBlock(
+      {
+        type: "ask",
+        raw: "/ask likely Is the gate open?",
+        odds: "likely",
+        question: "Is the gate open?",
+      },
+      8,
+    );
     const payload =
       block.payload && typeof block.payload === "object"
         ? (block.payload as Record<string, unknown>)
@@ -94,5 +97,6 @@ describe("oracle registry", () => {
     expect(block.type).toBe("oracle");
     expect(payload.providerId).toBe(testOracleProvider.id);
     expect(payload.providerName).toBe(testOracleProvider.name);
+    expect(payload.chaosFactor).toBe(8);
   });
 });

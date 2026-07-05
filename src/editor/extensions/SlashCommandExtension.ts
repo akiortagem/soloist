@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import { executeCommand } from "../../commands/executeCommand";
 import { parseCommand } from "../../commands/parseCommand";
+import { appStore } from "../../state/appStore";
 import { applyCommandResult } from "../applyCommandResult";
 
 function findCommandStart(textBeforeCursor: string): number | null {
@@ -53,7 +54,10 @@ export const SlashCommandExtension = Extension.create({
 
         const commandText = textBeforeCursor.slice(commandStart);
         const parsedCommand = parseCommand(commandText);
+        const snapshot = appStore.getSnapshot();
         const commandResult = executeCommand(parsedCommand, {
+          chaosFactor:
+            snapshot.activeSession?.chaosFactor ?? snapshot.chaosFactor,
           isInsideCombatSpace:
             findAncestorDepth(editor.state, "combatSpace") !== null,
         });

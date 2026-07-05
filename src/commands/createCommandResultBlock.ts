@@ -88,14 +88,17 @@ export function createRollCommandResultBlock(command: ParsedRollCommand): Result
   });
 }
 
-export function createAskCommandResultBlock(command: ParsedAskCommand): ResultBlock {
+export function createAskCommandResultBlock(
+  command: ParsedAskCommand,
+  chaosFactor: number,
+): ResultBlock {
   const oracle = getActiveOracleProvider();
   const roll = Math.floor(Math.random() * 100) + 1;
   const result = oracle.askYesNo({
     question: command.question,
     odds: command.odds,
     d100: roll,
-    chaosFactor: 5,
+    chaosFactor,
   });
 
   return createResultBlock("oracle", {
