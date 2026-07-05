@@ -8,13 +8,17 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: 240px minmax(420px, 1fr);
+  grid-template-columns: var(--left-panel-width) 8px minmax(420px, 1fr);
   min-height: 0;
   position: relative;
+  --left-panel-width: 240px;
+  --right-panel-width: 300px;
 }
 
 .workspace.tools-open {
-  grid-template-columns: 240px minmax(420px, 1fr) 300px;
+  grid-template-columns:
+    var(--left-panel-width) 8px minmax(420px, 1fr) 8px
+    var(--right-panel-width);
 }
 
 .left-sidebar,
@@ -30,6 +34,46 @@
 
 .right-panel {
   border-left: 1px solid var(--color-border);
+}
+
+.left-panel-resizer,
+.right-panel-resizer {
+  background: var(--color-bg);
+  cursor: col-resize;
+  min-height: 0;
+  position: relative;
+  touch-action: none;
+}
+
+.left-panel-resizer::before,
+.right-panel-resizer::before {
+  background: var(--color-border);
+  bottom: 0;
+  content: "";
+  left: 3px;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.left-panel-resizer:hover::before,
+.left-panel-resizer:focus-visible::before,
+.right-panel-resizer:hover::before,
+.right-panel-resizer:focus-visible::before,
+.workspace.is-resizing-left-panel .left-panel-resizer::before,
+.workspace.is-resizing-right-panel .right-panel-resizer::before {
+  background: var(--color-accent);
+}
+
+.left-panel-resizer:focus-visible,
+.right-panel-resizer:focus-visible {
+  outline: none;
+}
+
+.workspace.is-resizing-left-panel,
+.workspace.is-resizing-right-panel {
+  cursor: col-resize;
+  user-select: none;
 }
 
 nav {
@@ -273,7 +317,7 @@ nav button.active,
 }
 
 .workspace.tools-open .tools-edge-toggle {
-  right: 300px;
+  right: var(--right-panel-width);
 }
 
 .tools-edge-toggle:hover {

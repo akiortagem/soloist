@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   BookOpen,
   ChevronDown,
@@ -22,6 +23,16 @@ import { appStore, useAppStore } from "../state/appStore";
 const navigationRoutes = [
   { key: "templates", label: "Templates" },
 ] as const;
+
+const LEFT_PANEL_MIN_WIDTH = 240;
+const LEFT_PANEL_MAX_WIDTH = LEFT_PANEL_MIN_WIDTH * 2;
+const RIGHT_PANEL_MIN_WIDTH = 300;
+const RIGHT_PANEL_MAX_WIDTH = RIGHT_PANEL_MIN_WIDTH * 2;
+const PANEL_RESIZE_STEP = 24;
+
+function clampWidth(width: number, minWidth: number, maxWidth: number) {
+  return Math.min(maxWidth, Math.max(minWidth, width));
+}
 
 function DocumentMenu({
   document,
@@ -126,10 +137,19 @@ export function App() {
     rightPanelCloseRequest,
     rightPanelOpenRequest,
   } = useAppStore();
+  const [leftPanelWidth, setLeftPanelWidth] = useState(LEFT_PANEL_MIN_WIDTH);
+  const [isResizingLeftPanel, setIsResizingLeftPanel] = useState(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(RIGHT_PANEL_MIN_WIDTH);
+  const [isResizingRightPanel, setIsResizingRightPanel] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [campaignNameDraft, setCampaignNameDraft] = useState("");
+  const stopLeftPanelResizeRef = useRef<(() => void) | null>(null);
+  const stopRightPanelResizeRef = useRef<(() => void) | null>(null);
+  const [collapsedCampaignIds, setCollapsedCampaignIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -149,6 +169,95 @@ export function App() {
       setIsRightPanelOpen(false);
     }
   }, [rightPanelCloseRequest]);
+
+  useEffect(() => {
+    return () => {
+      stopLeftPanelResizeRef.current?.();
+      stopRightPanelResizeRef.current?.();
+    };
+  }, []);
+
+  function startLeftPanelResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = leftPanelWidth;
+
+    stopLeftPanelResizeRef.current?.();
+    setIsResizingLeftPanel(true);
+
+    function handlePointerMove(pointerEvent: PointerEvent) {
+      setLeftPanelWidth(
+        clampWidth(
+          startWidth + pointerEvent.clientX - startX,
+          LEFT_PANEL_MIN_WIDTH,
+          LEFT_PANEL_MAX_WIDTH,
+        ),
+      );
+    }
+
+    function stopLeftPanelResize() {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopLeftPanelResize);
+      window.removeEventListener("pointercancel", stopLeftPanelResize);
+      stopLeftPanelResizeRef.current = null;
+      setIsResizingLeftPanel(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopLeftPanelResize);
+    window.addEventListener("pointercancel", stopLeftPanelResize);
+    stopLeftPanelResizeRef.current = stopLeftPanelResize;
+  }
+
+  function startRightPanelResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+
+    stopRightPanelResizeRef.current?.();
+    setIsResizingRightPanel(true);
+
+    function handlePointerMove(pointerEvent: PointerEvent) {
+      setRightPanelWidth(
+        clampWidth(
+          startWidth + startX - pointerEvent.clientX,
+          RIGHT_PANEL_MIN_WIDTH,
+          RIGHT_PANEL_MAX_WIDTH,
+        ),
+      );
+    }
+
+    function stopRightPanelResize() {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopRightPanelResize);
+      window.removeEventListener("pointercancel", stopRightPanelResize);
+      stopRightPanelResizeRef.current = null;
+      setIsResizingRightPanel(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopRightPanelResize);
+    window.addEventListener("pointercancel", stopRightPanelResize);
+    stopRightPanelResizeRef.current = stopRightPanelResize;
+  }
+
+  function nudgeLeftPanelWidth(delta: number) {
+    setLeftPanelWidth((currentWidth) =>
+      clampWidth(currentWidth + delta, LEFT_PANEL_MIN_WIDTH, LEFT_PANEL_MAX_WIDTH),
+    );
+  }
+
+  function nudgeRightPanelWidth(delta: number) {
+    setRightPanelWidth((currentWidth) =>
+      clampWidth(
+        currentWidth + delta,
+        RIGHT_PANEL_MIN_WIDTH,
+        RIGHT_PANEL_MAX_WIDTH,
+      ),
+    );
+  }
 
   function getChildDocuments(parentId: string) {
     return campaignDocuments.filter((document) => document.parentId === parentId);
@@ -179,6 +288,32 @@ export function App() {
         nextIds.add(folderId);
       }
 
+      return nextIds;
+    });
+  }
+
+  function toggleCampaign(sessionId: string) {
+    setCollapsedCampaignIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+
+      if (nextIds.has(sessionId)) {
+        nextIds.delete(sessionId);
+      } else {
+        nextIds.add(sessionId);
+      }
+
+      return nextIds;
+    });
+  }
+
+  function expandCampaign(sessionId: string) {
+    setCollapsedCampaignIds((currentIds) => {
+      if (!currentIds.has(sessionId)) {
+        return currentIds;
+      }
+
+      const nextIds = new Set(currentIds);
+      nextIds.delete(sessionId);
       return nextIds;
     });
   }
@@ -296,7 +431,17 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <div className={`workspace${isRightPanelOpen ? " tools-open" : ""}`}>
+      <div
+        className={`workspace${isRightPanelOpen ? " tools-open" : ""}${
+          isResizingRightPanel ? " is-resizing-right-panel" : ""
+        }${isResizingLeftPanel ? " is-resizing-left-panel" : ""}`}
+        style={
+          {
+            "--left-panel-width": `${leftPanelWidth}px`,
+            "--right-panel-width": `${rightPanelWidth}px`,
+          } as CSSProperties
+        }
+      >
         <aside className="left-sidebar" aria-label="Primary navigation">
           <nav>
             {navigationRoutes.map(({ key, label }) => (
@@ -338,115 +483,172 @@ export function App() {
                 </p>
               )}
 
-              {sessions.map((session) => (
-                <div className="tree-campaign" key={session.id}>
-                  <div
-                    className={`tree-row campaign-row${
-                      session.id === activeSession?.id ? " selected" : ""
-                    }`}
-                  >
-                    {editingCampaignId === session.id ? (
-                      <form
-                        className="tree-name-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void finishCampaignRename(session.id);
-                        }}
-                      >
-                        <ChevronDown aria-hidden="true" />
-                        <input
-                          aria-label="Campaign name"
-                          autoFocus
-                          onBlur={() => void finishCampaignRename(session.id)}
-                          onChange={(event) =>
-                            setCampaignNameDraft(event.currentTarget.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              setEditingCampaignId(null);
-                              setCampaignNameDraft("");
-                            }
-                          }}
-                          value={campaignNameDraft}
-                        />
-                      </form>
-                    ) : (
-                      <button
-                        onClick={() => void appStore.selectSession(session.id)}
-                        onDoubleClick={() => startCampaignRename(session)}
-                        type="button"
-                      >
-                        <ChevronDown aria-hidden="true" />
-                        <BookOpen aria-hidden="true" />
-                        <span>{session.name}</span>
-                      </button>
-                    )}
-                    <div className="tree-menu">
-                      <button
-                        aria-expanded={openMenuId === session.id}
-                        aria-label={`Options for ${session.name}`}
-                        onClick={() =>
-                          setOpenMenuId((currentId) =>
-                            currentId === session.id ? null : session.id,
-                          )
-                        }
-                        title="Campaign options"
-                        type="button"
-                      >
-                        <MoreHorizontal aria-hidden="true" />
-                      </button>
-                      {openMenuId === session.id ? (
-                        <div className="tree-menu-popover" role="menu">
-                          <button
-                            onClick={() => {
-                              void appStore
-                                .selectSession(session.id)
-                                .then(() => appStore.createFolder());
-                              setOpenMenuId(null);
-                            }}
-                            role="menuitem"
-                            type="button"
-                          >
-                            Add folder
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`Delete "${session.name}"?`)) {
-                                void appStore.deleteSession(session.id);
-                              }
-                              setOpenMenuId(null);
-                            }}
-                            role="menuitem"
-                            type="button"
-                          >
-                            <Trash2 aria-hidden="true" />
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+              {sessions.map((session) => {
+                const isActiveCampaign = session.id === activeSession?.id;
+                const isCampaignCollapsed = collapsedCampaignIds.has(session.id);
 
-                  {session.id === activeSession?.id ? (
-                    <div className="tree-children">
-                      {campaignDocuments
-                        .filter(
-                          (document) =>
-                            !document.parentId &&
-                            document.id !== activeSession.documentId,
-                        )
-                        .map((document) =>
-                          document.kind === "folder"
-                            ? renderFolder(document)
-                            : renderDocument(document),
-                        )}
+                return (
+                  <div className="tree-campaign" key={session.id}>
+                    <div
+                      className={`tree-row campaign-row${
+                        isActiveCampaign ? " selected" : ""
+                      }`}
+                    >
+                      {editingCampaignId === session.id ? (
+                        <form
+                          className="tree-name-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void finishCampaignRename(session.id);
+                          }}
+                        >
+                          {isCampaignCollapsed ? (
+                            <ChevronRight aria-hidden="true" />
+                          ) : (
+                            <ChevronDown aria-hidden="true" />
+                          )}
+                          <input
+                            aria-label="Campaign name"
+                            autoFocus
+                            onBlur={() => void finishCampaignRename(session.id)}
+                            onChange={(event) =>
+                              setCampaignNameDraft(event.currentTarget.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                setEditingCampaignId(null);
+                                setCampaignNameDraft("");
+                              }
+                            }}
+                            value={campaignNameDraft}
+                          />
+                        </form>
+                      ) : (
+                        <button
+                          aria-expanded={isActiveCampaign && !isCampaignCollapsed}
+                          onClick={() => {
+                            if (isActiveCampaign) {
+                              toggleCampaign(session.id);
+                              void appStore.selectSession(session.id);
+                              return;
+                            }
+
+                            expandCampaign(session.id);
+                            void appStore.selectSession(session.id);
+                          }}
+                          onDoubleClick={() => startCampaignRename(session)}
+                          type="button"
+                        >
+                          {isCampaignCollapsed ? (
+                            <ChevronRight aria-hidden="true" />
+                          ) : (
+                            <ChevronDown aria-hidden="true" />
+                          )}
+                          <BookOpen aria-hidden="true" />
+                          <span>{session.name}</span>
+                        </button>
+                      )}
+                      <div className="tree-menu">
+                        <button
+                          aria-expanded={openMenuId === session.id}
+                          aria-label={`Options for ${session.name}`}
+                          onClick={() =>
+                            setOpenMenuId((currentId) =>
+                              currentId === session.id ? null : session.id,
+                            )
+                          }
+                          title="Campaign options"
+                          type="button"
+                        >
+                          <MoreHorizontal aria-hidden="true" />
+                        </button>
+                        {openMenuId === session.id ? (
+                          <div className="tree-menu-popover" role="menu">
+                            <button
+                              onClick={() => {
+                                void appStore
+                                  .selectSession(session.id)
+                                  .then(() => appStore.createFolder());
+                                setOpenMenuId(null);
+                              }}
+                              role="menuitem"
+                              type="button"
+                            >
+                              Add folder
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Delete "${session.name}"?`)) {
+                                  void appStore.deleteSession(session.id);
+                                }
+                                setOpenMenuId(null);
+                              }}
+                              role="menuitem"
+                              type="button"
+                            >
+                              <Trash2 aria-hidden="true" />
+                              Delete
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              ))}
+
+                    {isActiveCampaign && !isCampaignCollapsed ? (
+                      <div className="tree-children">
+                        {campaignDocuments
+                          .filter(
+                            (document) =>
+                              !document.parentId &&
+                              document.id !== session.documentId,
+                          )
+                          .map((document) =>
+                            document.kind === "folder"
+                              ? renderFolder(document)
+                              : renderDocument(document),
+                          )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </section>
         </aside>
+
+        <div
+          aria-label="Resize navigation panel"
+          aria-orientation="vertical"
+          aria-valuemax={LEFT_PANEL_MAX_WIDTH}
+          aria-valuemin={LEFT_PANEL_MIN_WIDTH}
+          aria-valuenow={leftPanelWidth}
+          className="left-panel-resizer"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowRight") {
+              event.preventDefault();
+              nudgeLeftPanelWidth(PANEL_RESIZE_STEP);
+            }
+
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              nudgeLeftPanelWidth(-PANEL_RESIZE_STEP);
+            }
+
+            if (event.key === "Home") {
+              event.preventDefault();
+              setLeftPanelWidth(LEFT_PANEL_MIN_WIDTH);
+            }
+
+            if (event.key === "End") {
+              event.preventDefault();
+              setLeftPanelWidth(LEFT_PANEL_MAX_WIDTH);
+            }
+          }}
+          onPointerDown={startLeftPanelResize}
+          role="separator"
+          tabIndex={0}
+          title="Resize navigation panel"
+        />
 
         <section className="editor-area" aria-label="Main editor">
           {route === "templates" ? (
@@ -472,23 +674,58 @@ export function App() {
         </button>
 
         {isRightPanelOpen ? (
-          <aside className="right-panel" aria-label="Session tools">
-            <CombatPanel />
+          <>
+            <div
+              aria-label="Resize tools panel"
+              aria-orientation="vertical"
+              aria-valuemax={RIGHT_PANEL_MAX_WIDTH}
+              aria-valuemin={RIGHT_PANEL_MIN_WIDTH}
+              aria-valuenow={rightPanelWidth}
+              className="right-panel-resizer"
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  nudgeRightPanelWidth(PANEL_RESIZE_STEP);
+                }
 
-            <section>
-              <h2>Oracle Settings</h2>
-              <dl>
-                <div>
-                  <dt>Provider</dt>
-                  <dd>Demo oracle</dd>
-                </div>
-                <div>
-                  <dt>Chaos Factor</dt>
-                  <dd>{chaosFactor}</dd>
-                </div>
-              </dl>
-            </section>
-          </aside>
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  nudgeRightPanelWidth(-PANEL_RESIZE_STEP);
+                }
+
+                if (event.key === "Home") {
+                  event.preventDefault();
+                  setRightPanelWidth(RIGHT_PANEL_MIN_WIDTH);
+                }
+
+                if (event.key === "End") {
+                  event.preventDefault();
+                  setRightPanelWidth(RIGHT_PANEL_MAX_WIDTH);
+                }
+              }}
+              onPointerDown={startRightPanelResize}
+              role="separator"
+              tabIndex={0}
+              title="Resize tools panel"
+            />
+            <aside className="right-panel" aria-label="Session tools">
+              <CombatPanel />
+
+              <section>
+                <h2>Oracle Settings</h2>
+                <dl>
+                  <div>
+                    <dt>Provider</dt>
+                    <dd>Demo oracle</dd>
+                  </div>
+                  <div>
+                    <dt>Chaos Factor</dt>
+                    <dd>{chaosFactor}</dd>
+                  </div>
+                </dl>
+              </section>
+            </aside>
+          </>
         ) : null}
       </div>
     </main>
