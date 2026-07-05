@@ -8,6 +8,7 @@ import {
   tokenizeArgs,
   trimCommandInput,
 } from "../commands/parserUtils";
+import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
 
 describe("command parser foundation", () => {
   it("handles an empty string safely", () => {
@@ -23,6 +24,15 @@ describe("command parser foundation", () => {
       type: "unknown",
       raw: "roll 1d20+3",
       reason: "Command input must start with /",
+    });
+  });
+
+  it("returns unknown when the command name misses the registry", () => {
+    expect(parseCommand("/roll 1d20", new SlashCommandRegistry())).toEqual({
+      type: "unknown",
+      raw: "/roll 1d20",
+      commandName: "roll",
+      reason: "Command parser not implemented yet",
     });
   });
 

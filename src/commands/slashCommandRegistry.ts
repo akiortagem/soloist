@@ -1,4 +1,18 @@
+import type { ParsedCommand } from "./commandTypes";
+import { askCommand } from "./core/askCommand";
+import { chaosCommand } from "./core/chaosCommand";
+import { combatCommand } from "./core/combatCommand";
+import { rollCommand } from "./core/rollCommand";
+import { sceneCommand } from "./core/sceneCommand";
+import { statCommand } from "./core/statCommand";
+
 export type SlashCommandSource = "core" | "plugin";
+
+export type SlashCommandParser = (input: {
+  raw: string;
+  commandName: string;
+  argsText: string;
+}) => ParsedCommand;
 
 export type SlashCommandDefinition = {
   id: string;
@@ -8,61 +22,21 @@ export type SlashCommandDefinition = {
   prefix: string;
   source: SlashCommandSource;
   pluginId?: string;
+  parse?: SlashCommandParser;
 };
 
 const CORE_SLASH_COMMANDS: SlashCommandDefinition[] = [
-  {
-    id: "core.roll",
-    name: "roll",
-    label: "Roll Dice",
-    description: "Roll dice from a dice formula.",
-    prefix: "/roll ",
-    source: "core",
-  },
-  {
-    id: "core.ask",
-    name: "ask",
-    label: "Ask Oracle",
-    description: "Ask a yes/no oracle question.",
-    prefix: "/ask ",
-    source: "core",
-  },
-  {
-    id: "core.scene",
-    name: "scene",
-    label: "Start Scene",
-    description: "Start a new scene container.",
-    prefix: "/scene",
-    source: "core",
-  },
-  {
-    id: "core.combat",
-    name: "combat",
-    label: "Start Combat",
-    description: "Start a combat space.",
-    prefix: "/combat",
-    source: "core",
-  },
-  {
-    id: "core.stat",
-    name: "stat",
-    label: "Modify Stat",
-    description: "Apply a stat change.",
-    prefix: "/stat ",
-    source: "core",
-  },
-  {
-    id: "core.chaos",
-    name: "chaos",
-    label: "Modify Chaos",
-    description: "Apply a chaos factor change.",
-    prefix: "/chaos ",
-    source: "core",
-  },
+  rollCommand,
+  askCommand,
+  sceneCommand,
+  combatCommand,
+  statCommand,
+  chaosCommand,
 ];
 
 export class SlashCommandRegistry {
   private readonly commands = new Map<string, SlashCommandDefinition>();
+  private readonly commandsByName = new Map<string, SlashCommandDefinition>();
 
   constructor(commands: SlashCommandDefinition[] = []) {
     for (const command of commands) {
@@ -75,11 +49,19 @@ export class SlashCommandRegistry {
       throw new Error(`Slash command already registered: ${command.id}`);
     }
 
+    const normalizedName = command.name.toLowerCase();
+
+    if (this.commandsByName.has(normalizedName)) {
+      throw new Error(`Slash command already registered for name: ${command.name}`);
+    }
+
     if (command.source === "plugin" && !command.pluginId) {
       throw new Error(`Plugin slash command requires pluginId: ${command.id}`);
     }
 
-    this.commands.set(command.id, { ...command });
+    const storedCommand = { ...command, name: normalizedName };
+    this.commands.set(command.id, storedCommand);
+    this.commandsByName.set(normalizedName, storedCommand);
   }
 
   list(): SlashCommandDefinition[] {
@@ -88,6 +70,11 @@ export class SlashCommandRegistry {
 
   get(id: string): SlashCommandDefinition | undefined {
     const command = this.commands.get(id);
+    return command ? { ...command } : undefined;
+  }
+
+  getByName(name: string): SlashCommandDefinition | undefined {
+    const command = this.commandsByName.get(name.toLowerCase());
     return command ? { ...command } : undefined;
   }
 }
