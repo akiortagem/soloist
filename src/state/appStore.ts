@@ -32,6 +32,7 @@ import {
   setActiveOracleProvider,
 } from "../oracle/oracleRegistry";
 import { createRepositories } from "../persistence/sessionRepository";
+import { PluginManager, type PluginManagerStatus } from "../plugins/pluginManager";
 
 export type AppRoute =
   | "sessions"
@@ -55,6 +56,7 @@ export type AppState = {
   combatState: CombatState | null;
   chaosFactor: number;
   activeOracleProviderId: string;
+  pluginStatuses: PluginManagerStatus[];
   isLoadingSessions: boolean;
   isCreatingSession: boolean;
   isLoadingTemplates: boolean;
@@ -163,6 +165,7 @@ const initialState: AppState = {
   combatState: null,
   chaosFactor: DEFAULT_CHAOS_FACTOR,
   activeOracleProviderId: getActiveOracleProvider().id,
+  pluginStatuses: [],
   isLoadingSessions: true,
   isCreatingSession: false,
   isLoadingTemplates: false,
@@ -361,6 +364,7 @@ export const appStore = {
 
     try {
       const repositories = await createRepositories();
+      const pluginStatuses = await new PluginManager(repositories.plugins).reload();
       await ensureOnboardingContent(repositories);
       const activeOracleProviderSetting = await repositories.settings.get(
         ACTIVE_ORACLE_PROVIDER_SETTING_KEY,
@@ -379,6 +383,7 @@ export const appStore = {
         activeSessionId: activeSession?.id,
         activeSession,
         activeOracleProviderId: activeOracleProvider.id,
+        pluginStatuses,
         persistenceMessage:
           sessions.length > 0
             ? `Read ${sessions.length} session${
@@ -395,6 +400,7 @@ export const appStore = {
         activeCharacterSheet: null,
         activeSession: null,
         activeSessionId: undefined,
+        pluginStatuses: [],
         combatState: null,
         documentSaveState: "error",
         chaosFactor: DEFAULT_CHAOS_FACTOR,

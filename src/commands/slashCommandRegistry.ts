@@ -20,6 +20,7 @@ export type SlashCommandDefinition = {
   label: string;
   description?: string;
   prefix: string;
+  commandText?: string;
   source: SlashCommandSource;
   pluginId?: string;
   parse?: SlashCommandParser;
@@ -76,6 +77,17 @@ export class SlashCommandRegistry {
   getByName(name: string): SlashCommandDefinition | undefined {
     const command = this.commandsByName.get(name.toLowerCase());
     return command ? { ...command } : undefined;
+  }
+
+  unregisterPlugin(pluginId: string): void {
+    for (const command of this.commands.values()) {
+      if (command.source !== "plugin" || command.pluginId !== pluginId) {
+        continue;
+      }
+
+      this.commands.delete(command.id);
+      this.commandsByName.delete(command.name);
+    }
   }
 }
 

@@ -789,9 +789,11 @@ function SessionDocumentEditor({
 
       if (event.key === "Enter") {
         event.preventDefault();
+        const selectedOption =
+          filteredSlashMenuOptions[selectedSlashOptionIndex] ??
+          filteredSlashMenuOptions[0];
         insertSlashCommand(
-          filteredSlashMenuOptions[selectedSlashOptionIndex]?.prefix ??
-            filteredSlashMenuOptions[0].prefix,
+          selectedOption.commandText ?? selectedOption.prefix,
         );
       }
     }
@@ -825,7 +827,7 @@ function SessionDocumentEditor({
     supportsSlashCommands,
   ]);
 
-  function insertSlashCommand(prefix: string) {
+  function insertSlashCommand(commandText: string) {
     if (!editor || !slashMenu) {
       return;
     }
@@ -835,7 +837,7 @@ function SessionDocumentEditor({
         from: slashMenu.from,
         to: slashMenu.to,
       },
-      prefix,
+      commandText,
     ).run();
     setSlashMenu(null);
   }
@@ -885,7 +887,7 @@ function SessionDocumentEditor({
                 }
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  insertSlashCommand(option.prefix);
+                  insertSlashCommand(option.commandText ?? option.prefix);
                 }}
                 role="menuitem"
                 type="button"
