@@ -11,9 +11,11 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
+  Settings,
   Trash2,
   UserRound,
 } from "lucide-react";
+import { SettingsModal } from "./SettingsModal";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
 import type { Document } from "../domain/domainTypes";
 import { CombatPanel } from "../combat/CombatPanel";
@@ -152,6 +154,7 @@ export function App() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [campaignNameDraft, setCampaignNameDraft] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const stopLeftPanelResizeRef = useRef<(() => void) | null>(null);
   const stopRightPanelResizeRef = useRef<(() => void) | null>(null);
   const [collapsedCampaignIds, setCollapsedCampaignIds] = useState<Set<string>>(
@@ -621,6 +624,17 @@ export function App() {
               })}
             </div>
           </section>
+
+          <div className="left-sidebar-footer">
+            <button
+              aria-label="Open settings"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings"
+              type="button"
+            >
+              <Settings aria-hidden="true" />
+            </button>
+          </div>
         </aside>
 
         <div
@@ -735,6 +749,9 @@ export function App() {
           </>
         ) : null}
       </div>
+      {isSettingsOpen ? (
+        <SettingsModal onClose={() => setIsSettingsOpen(false)} />
+      ) : null}
     </main>
   );
 }

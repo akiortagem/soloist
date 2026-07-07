@@ -26,6 +26,8 @@ type CharacterSheetTemplateRow = {
   id: string;
   name: string;
   fields_json: string;
+  source_plugin_id: string | null;
+  source_contribution_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -56,6 +58,8 @@ function mapCharacterSheetTemplate(
     id: row.id,
     name: row.name,
     fields: parseJsonArray<CharacterTemplateItem>(row.fields_json),
+    sourcePluginId: row.source_plugin_id ?? undefined,
+    sourceContributionId: row.source_contribution_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -202,7 +206,7 @@ export class CharacterSheetRepository {
 
   async listTemplates() {
     const rows = await this.db.select<CharacterSheetTemplateRow[]>(
-      `SELECT id, name, fields_json, created_at, updated_at
+      `SELECT id, name, fields_json, source_plugin_id, source_contribution_id, created_at, updated_at
        FROM character_sheet_templates
        ORDER BY updated_at DESC`,
     );
@@ -213,24 +217,30 @@ export class CharacterSheetRepository {
   async createTemplate(input: {
     name: string;
     fields?: CharacterTemplateItem[];
+    sourcePluginId?: string;
+    sourceContributionId?: string;
   }) {
     const timestamp = nowIso();
     const template: CharacterSheetTemplateRecord = {
       id: createId("template"),
       name: input.name,
       fields: input.fields ?? [],
+      sourcePluginId: input.sourcePluginId,
+      sourceContributionId: input.sourceContributionId,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
 
     await this.db.execute(
       `INSERT INTO character_sheet_templates
-       (id, name, fields_json, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5)`,
+       (id, name, fields_json, source_plugin_id, source_contribution_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         template.id,
         template.name,
         JSON.stringify(template.fields),
+        template.sourcePluginId ?? null,
+        template.sourceContributionId ?? null,
         template.createdAt,
         template.updatedAt,
       ],
@@ -241,7 +251,7 @@ export class CharacterSheetRepository {
 
   async getTemplate(id: string) {
     const rows = await this.db.select<CharacterSheetTemplateRow[]>(
-      `SELECT id, name, fields_json, created_at, updated_at
+      `SELECT id, name, fields_json, source_plugin_id, source_contribution_id, created_at, updated_at
        FROM character_sheet_templates
        WHERE id = $1
        LIMIT 1`,

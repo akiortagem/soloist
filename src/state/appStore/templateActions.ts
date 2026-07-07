@@ -4,6 +4,7 @@ import {
   syncFieldsWithTemplate,
 } from "../../characterSheets/characterSheetTemplateLogic";
 import { createRepositories } from "../../persistence/sessionRepository";
+import { reinstallPluginCharacterSheetTemplate } from "../../plugins/characterSheetTemplateImporter";
 import { setState, state } from "./stateCore";
 
 export const templateActions = {
@@ -98,6 +99,47 @@ export const templateActions = {
       setState({
         persistenceError: error instanceof Error ? error.message : String(error),
         persistenceMessage: "Template create failed.",
+      });
+      return null;
+    } finally {
+      setState({ isSavingTemplate: false });
+    }
+  },
+
+  async reinstallPluginTemplate(input: {
+    pluginId: string;
+    contributionId: string;
+  }) {
+    setState({
+      isSavingTemplate: true,
+      persistenceError: undefined,
+    });
+
+    try {
+      const repositories = await createRepositories();
+      const createdTemplate = await reinstallPluginCharacterSheetTemplate(
+        repositories,
+        input,
+      );
+      const characterSheetTemplates =
+        await repositories.characterSheets.listTemplates();
+      const activeTemplate =
+        characterSheetTemplates.find(
+          (template) => template.id === createdTemplate.id,
+        ) ?? createdTemplate;
+
+      setState({
+        characterSheetTemplates,
+        activeTemplateId: activeTemplate.id,
+        activeTemplate,
+        persistenceMessage: `Reinstalled template ${activeTemplate.name}.`,
+      });
+
+      return activeTemplate;
+    } catch (error) {
+      setState({
+        persistenceError: error instanceof Error ? error.message : String(error),
+        persistenceMessage: "Template reinstall failed.",
       });
       return null;
     } finally {

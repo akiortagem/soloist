@@ -228,5 +228,16 @@ pub fn migrations() -> Vec<Migration> {
 "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 19,
+            description: "add_character_sheet_template_plugin_provenance",
+            sql: r#"
+            ALTER TABLE character_sheet_templates ADD COLUMN source_plugin_id TEXT;
+            ALTER TABLE character_sheet_templates ADD COLUMN source_contribution_id TEXT;
+            CREATE INDEX IF NOT EXISTS idx_character_sheet_templates_plugin_source
+                ON character_sheet_templates(source_plugin_id, source_contribution_id);
+"#,
+            kind: MigrationKind::Up,
+        },
     ]
 }

@@ -5,6 +5,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { Download } from "lucide-react";
 import {
   CHARACTER_TEMPLATE_FIELD_TYPES,
   coerceTemplateFieldDefaultValue,
@@ -26,6 +29,10 @@ import type {
   CharacterTemplateLayout,
   CurrentMaxNumberValue,
 } from "./characterSheetTypes";
+import {
+  createCharacterSheetTemplatePluginManifest,
+  createPluginManifestFileName,
+} from "../plugins/characterSheetTemplateExporter";
 import { appStore, useAppStore } from "../state/appStore";
 
 type TemplateView = "list" | "edit";
@@ -209,12 +216,18 @@ function ActionMenu({
 }
 
 function TemplateList({
+  installedPluginIds,
   onCreate,
   onEdit,
+  onExport,
+  onReinstall,
   templates,
 }: {
+  installedPluginIds: Set<string>;
   onCreate: () => void;
   onEdit: (template: CharacterSheetTemplate) => void;
+  onExport: (template: CharacterSheetTemplate) => void;
+  onReinstall: (template: CharacterSheetTemplate) => void;
   templates: CharacterSheetTemplate[];
 }) {
   return (
@@ -261,9 +274,30 @@ function TemplateList({
                       : ""}
                   </p>
                 </div>
-                <button onClick={() => onEdit(template)} type="button">
-                  Edit
-                </button>
+                <div className="template-header-actions">
+                  <button
+                    onClick={() => onExport(template)}
+                    title="Export as a plugin manifest"
+                    type="button"
+                  >
+                    <Download aria-hidden="true" />
+                    Export
+                  </button>
+                  {template.sourcePluginId &&
+                  template.sourceContributionId &&
+                  installedPluginIds.has(template.sourcePluginId) ? (
+                    <button
+                      onClick={() => onReinstall(template)}
+                      title="Create a fresh editable copy from the plugin contribution"
+                      type="button"
+                    >
+                      Reinstall
+                    </button>
+                  ) : null}
+                  <button onClick={() => onEdit(template)} type="button">
+                    Edit
+                  </button>
+                </div>
               </article>
             );
           })}
@@ -1230,12 +1264,73 @@ export function CharacterSheetTemplatePanel() {
     characterSheetTemplates,
     isLoadingTemplates,
     isSavingTemplate,
+    pluginStatuses,
   } = useAppStore();
   const [view, setView] = useState<TemplateView>("list");
+  const installedPluginIds = useMemo(
+    () => new Set(pluginStatuses.map((status) => status.pluginId)),
+    [pluginStatuses],
+  );
 
   useEffect(() => {
     void appStore.loadTemplates();
   }, []);
+
+  async function exportTemplate(template: CharacterSheetTemplate) {
+    try {
+      console.info("[template-export] Export clicked", {
+        templateId: template.id,
+        templateName: template.name,
+      });
+      const manifest = createCharacterSheetTemplatePluginManifest(template);
+      const contents = `${JSON.stringify(manifest, null, 2)}\n`;
+      const fileName = createPluginManifestFileName(template.name);
+
+      console.info("[template-export] Manifest generated", {
+        fileName,
+        pluginId: manifest.id,
+        contributionId:
+          manifest.contributes?.characterSheetTemplates?.[0]?.id,
+      });
+
+      const filePath = await save({
+        title: "Export character sheet template plugin",
+        defaultPath: fileName,
+        filters: [
+          {
+            name: "Soloist Plugin Manifest",
+            extensions: ["json"],
+          },
+        ],
+      });
+
+      if (!filePath) {
+        console.info("[template-export] Export canceled");
+        return;
+      }
+
+      console.info("[template-export] Save path chosen", {
+        filePath,
+      });
+
+      const savedPath = await invoke<string>("export_plugin_manifest", {
+        filePath,
+        contents,
+      });
+
+      console.info("[template-export] Native export complete", {
+        savedPath,
+      });
+      window.alert(`Exported plugin manifest to:\n${savedPath}`);
+    } catch (error) {
+      console.error("[template-export] Export failed", error);
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Template export failed.",
+      );
+    }
+  }
 
   if (isLoadingTemplates) {
     return (
@@ -1259,6 +1354,7 @@ export function CharacterSheetTemplatePanel() {
 
   return (
     <TemplateList
+      installedPluginIds={installedPluginIds}
       onCreate={() => {
         void appStore
           .createTemplate({ name: "New Template" })
@@ -1271,6 +1367,23 @@ export function CharacterSheetTemplatePanel() {
       onEdit={(template) => {
         appStore.selectTemplate(template.id);
         setView("edit");
+      }}
+      onExport={exportTemplate}
+      onReinstall={(template) => {
+        if (!template.sourcePluginId || !template.sourceContributionId) {
+          return;
+        }
+
+        void appStore
+          .reinstallPluginTemplate({
+            pluginId: template.sourcePluginId,
+            contributionId: template.sourceContributionId,
+          })
+          .then((createdTemplate) => {
+            if (createdTemplate) {
+              setView("edit");
+            }
+          });
       }}
       templates={characterSheetTemplates}
     />

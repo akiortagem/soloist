@@ -23,3 +23,10 @@ Use `randomTables` to define tables and `slashCommands[].tableId` to bind a slas
 
 See [`omen/manifest.json`](./omen/manifest.json) for a complete `/omen` example.
 
+## simple-char
+
+`simple-char/plugin.json` contributes one editable character sheet template named
+`Simple Character`. When imported, Soloist creates a local template copy with a
+two-column row layout: HP and MP in a Resources group, and ATK and DEF in a
+Combat group.
+

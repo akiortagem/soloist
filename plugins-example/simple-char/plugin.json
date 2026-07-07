@@ -1,0 +1,75 @@
+{
+  "id": "soloist-plugin.simple-char",
+  "name": "Simple Character Template",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "data",
+  "contributes": {
+    "characterSheetTemplates": [
+      {
+        "id": "simple-character",
+        "name": "Simple Character",
+        "fields": [
+          {
+            "id": "core-stats-row",
+            "kind": "layout",
+            "columns": [
+              {
+                "id": "resources-column",
+                "fields": [
+                  {
+                    "id": "resources",
+                    "kind": "group",
+                    "name": "Resources",
+                    "fields": [
+                      {
+                        "id": "hp",
+                        "kind": "field",
+                        "name": "HP",
+                        "type": "number",
+                        "defaultValue": 10
+                      },
+                      {
+                        "id": "mp",
+                        "kind": "field",
+                        "name": "MP",
+                        "type": "number",
+                        "defaultValue": 5
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "combat-column",
+                "fields": [
+                  {
+                    "id": "combat",
+                    "kind": "group",
+                    "name": "Combat",
+                    "fields": [
+                      {
+                        "id": "atk",
+                        "kind": "field",
+                        "name": "ATK",
+                        "type": "number",
+                        "defaultValue": 1
+                      },
+                      {
+                        "id": "def",
+                        "kind": "field",
+                        "name": "DEF",
+                        "type": "number",
+                        "defaultValue": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

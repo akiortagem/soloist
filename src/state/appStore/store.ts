@@ -4,6 +4,7 @@ import { chaosActions } from "./chaosActions";
 import { characterSheetActions } from "./characterSheetActions";
 import { combatActions } from "./combatActions";
 import { getSnapshot, subscribe } from "./stateCore";
+import { pluginActions } from "./pluginActions";
 import { templateActions } from "./templateActions";
 import { uiActions } from "./uiActions";
 
@@ -20,6 +21,7 @@ export const appStore = {
   ...uiActions,
   ...bootstrapActions,
   ...templateActions,
+  ...pluginActions,
   ...campaignActions,
   ...characterSheetActions,
   ...combatActions,

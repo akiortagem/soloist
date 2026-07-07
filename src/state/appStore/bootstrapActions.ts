@@ -4,6 +4,7 @@ import {
   setActiveOracleProvider,
 } from "../../oracle/oracleRegistry";
 import { createRepositories } from "../../persistence/sessionRepository";
+import { importCharacterSheetTemplatesFromPlugins } from "../../plugins/characterSheetTemplateImporter";
 import { PluginManager } from "../../plugins/pluginManager";
 import {
   getActiveSession,
@@ -35,6 +36,7 @@ export const bootstrapActions = {
     try {
       const repositories = await createRepositories();
       const pluginStatuses = await new PluginManager(repositories.plugins).reload();
+      await importCharacterSheetTemplatesFromPlugins(repositories);
       await ensureOnboardingContent(repositories);
       const activeOracleProviderSetting = await repositories.settings.get(
         ACTIVE_ORACLE_PROVIDER_SETTING_KEY,

@@ -107,6 +107,8 @@ export type CharacterSheetTemplate = {
   id: string;
   name: string;
   fields: CharacterTemplateItem[];
+  sourcePluginId?: string;
+  sourceContributionId?: string;
   createdAt: string;
   updatedAt: string;
 };
