@@ -1,0 +1,24 @@
+{
+  "id": "soloist-plugin.fixture-invalid-table-entry",
+  "name": "Invalid Table Entry Fixture",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "data",
+  "contributes": {
+    "randomTables": [
+      {
+        "id": "broken",
+        "name": "Broken Table",
+        "dice": "1d6",
+        "entries": [
+          {
+            "id": "reversed",
+            "min": 6,
+            "max": 1,
+            "text": "This range is invalid."
+          }
+        ]
+      }
+    ]
+  }
+}

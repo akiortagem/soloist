@@ -1,0 +1,66 @@
+{
+  "id": "soloist-plugin.fixture-valid",
+  "name": "Valid Fixture Plugin",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "data",
+  "contributes": {
+    "slashCommands": [
+      {
+        "id": "prompt",
+        "name": "prompt",
+        "label": "Insert Prompt",
+        "prefix": "/prompt",
+        "description": "Insert a short scene prompt.",
+        "commandText": "A new scene begins with an unexpected visitor."
+      }
+    ],
+    "oracleTables": [
+      {
+        "id": "answer",
+        "name": "Answer",
+        "description": "A tiny yes or no oracle.",
+        "dice": "1d2",
+        "entries": [
+          {
+            "id": "yes",
+            "min": 1,
+            "max": 1,
+            "text": "Yes"
+          },
+          {
+            "id": "no",
+            "min": 2,
+            "max": 2,
+            "text": "No"
+          }
+        ]
+      }
+    ],
+    "characterSheetTemplates": [
+      {
+        "id": "wanderer",
+        "name": "Wanderer",
+        "fields": [
+          {
+            "id": "health",
+            "kind": "field",
+            "name": "Health",
+            "type": "current_max_number",
+            "defaultValue": {
+              "current": 10,
+              "max": 10
+            }
+          },
+          {
+            "id": "notes",
+            "kind": "field",
+            "name": "Notes",
+            "type": "longText",
+            "defaultValue": ""
+          }
+        ]
+      }
+    ]
+  }
+}

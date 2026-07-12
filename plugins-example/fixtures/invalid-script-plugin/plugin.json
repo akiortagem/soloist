@@ -1,0 +1,8 @@
+{
+  "id": "soloist-plugin.fixture-script",
+  "name": "Invalid Script Plugin",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "script",
+  "contributes": {}
+}

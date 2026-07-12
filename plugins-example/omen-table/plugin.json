@@ -1,5 +1,5 @@
 {
-  "id": "soloist-plugin.example-omen",
+  "id": "soloist-plugin.omen-table",
   "name": "Omen Table",
   "version": "1.0.0",
   "soloistApiVersion": "1",
@@ -63,4 +63,3 @@
     ]
   }
 }
-

@@ -1,0 +1,7 @@
+{
+  "id": "soloist-plugin.fixture-missing-name",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "data",
+  "contributes": {}
+}

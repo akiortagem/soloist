@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import invalidMissingRequiredFieldFixture from "../../plugins-example/fixtures/invalid-missing-required-field/plugin.json";
+import invalidScriptPluginFixture from "../../plugins-example/fixtures/invalid-script-plugin/plugin.json";
+import invalidTableEntryFixture from "../../plugins-example/fixtures/invalid-table-entry/plugin.json";
+import validDataPluginFixture from "../../plugins-example/fixtures/valid-data-plugin/plugin.json";
+import validOmenTablePlugin from "../../plugins-example/omen-table/plugin.json";
 import { validatePluginManifest } from "../plugins/pluginTypes";
 
 const validManifest = {
@@ -112,6 +117,19 @@ describe("plugin manifest validation", () => {
     expect(result.manifest.contributes?.slashCommands?.[1].tableId).toBe(
       "omens",
     );
+  });
+
+  it("accepts documented valid plugin fixtures", () => {
+    expect(validatePluginManifest(validOmenTablePlugin).ok).toBe(true);
+    expect(validatePluginManifest(validDataPluginFixture).ok).toBe(true);
+  });
+
+  it("rejects documented invalid plugin fixtures", () => {
+    expect(validatePluginManifest(invalidMissingRequiredFieldFixture).ok).toBe(
+      false,
+    );
+    expect(validatePluginManifest(invalidScriptPluginFixture).ok).toBe(false);
+    expect(validatePluginManifest(invalidTableEntryFixture).ok).toBe(false);
   });
 
   it("rejects missing required fields", () => {
