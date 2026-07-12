@@ -10,6 +10,10 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::export_plugin_manifest,
+            commands::install_plugin_package,
+            commands::open_plugin_directory,
+            commands::list_installed_plugin_folders,
+            commands::uninstall_plugin_folder,
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(

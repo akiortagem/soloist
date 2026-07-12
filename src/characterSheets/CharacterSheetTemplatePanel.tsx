@@ -216,18 +216,14 @@ function ActionMenu({
 }
 
 function TemplateList({
-  installedPluginIds,
   onCreate,
   onEdit,
   onExport,
-  onReinstall,
   templates,
 }: {
-  installedPluginIds: Set<string>;
   onCreate: () => void;
   onEdit: (template: CharacterSheetTemplate) => void;
   onExport: (template: CharacterSheetTemplate) => void;
-  onReinstall: (template: CharacterSheetTemplate) => void;
   templates: CharacterSheetTemplate[];
 }) {
   return (
@@ -283,17 +279,6 @@ function TemplateList({
                     <Download aria-hidden="true" />
                     Export
                   </button>
-                  {template.sourcePluginId &&
-                  template.sourceContributionId &&
-                  installedPluginIds.has(template.sourcePluginId) ? (
-                    <button
-                      onClick={() => onReinstall(template)}
-                      title="Create a fresh editable copy from the plugin contribution"
-                      type="button"
-                    >
-                      Reinstall
-                    </button>
-                  ) : null}
                   <button onClick={() => onEdit(template)} type="button">
                     Edit
                   </button>
@@ -1263,14 +1248,8 @@ export function CharacterSheetTemplatePanel() {
     activeTemplate,
     characterSheetTemplates,
     isLoadingTemplates,
-    isSavingTemplate,
-    pluginStatuses,
   } = useAppStore();
   const [view, setView] = useState<TemplateView>("list");
-  const installedPluginIds = useMemo(
-    () => new Set(pluginStatuses.map((status) => status.pluginId)),
-    [pluginStatuses],
-  );
 
   useEffect(() => {
     void appStore.loadTemplates();
@@ -1354,7 +1333,6 @@ export function CharacterSheetTemplatePanel() {
 
   return (
     <TemplateList
-      installedPluginIds={installedPluginIds}
       onCreate={() => {
         void appStore
           .createTemplate({ name: "New Template" })
@@ -1369,22 +1347,6 @@ export function CharacterSheetTemplatePanel() {
         setView("edit");
       }}
       onExport={exportTemplate}
-      onReinstall={(template) => {
-        if (!template.sourcePluginId || !template.sourceContributionId) {
-          return;
-        }
-
-        void appStore
-          .reinstallPluginTemplate({
-            pluginId: template.sourcePluginId,
-            contributionId: template.sourceContributionId,
-          })
-          .then((createdTemplate) => {
-            if (createdTemplate) {
-              setView("edit");
-            }
-          });
-      }}
       templates={characterSheetTemplates}
     />
   );

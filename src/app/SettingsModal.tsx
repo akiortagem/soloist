@@ -1,34 +1,144 @@
-import { useRef, useState } from "react";
-import { Plug, Upload, X } from "lucide-react";
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  FolderOpen,
+  Plug,
+  RefreshCw,
+  ToggleLeft,
+  ToggleRight,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { appStore, useAppStore } from "../state/appStore";
 import type { PluginManifest } from "../plugins/pluginTypes";
 
 type SettingsSection = "plugins";
+
+type PluginPackageInstallResult = {
+  folderName: string;
+  installedPath: string;
+  manifestText: string;
+};
+
+function isCharacterSheetTemplateManifest(manifest: PluginManifest) {
+  return (manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0;
+}
+
+function createPluginTypeText(plugin: {
+  typeLabel: string;
+  contributionLabels: string[];
+}) {
+  return [plugin.typeLabel, ...plugin.contributionLabels].join(" · ");
+}
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { persistenceError, persistenceMessage, pluginStatuses } = useAppStore();
   const [activeSection, setActiveSection] = useState<SettingsSection>("plugins");
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [updatingPluginId, setUpdatingPluginId] = useState<string | null>(null);
 
-  async function installPluginFromFile(file: File) {
+  async function installPluginFromPackage() {
     setIsInstalling(true);
     setInstallError(null);
 
     try {
-      const manifest = JSON.parse(await file.text()) as PluginManifest;
-      await appStore.installPluginManifest(manifest);
+      const filePath = await open({
+        title: "Install Soloist plugin package",
+        multiple: false,
+        filters: [
+          {
+            name: "Soloist Plugin Package",
+            extensions: ["soloist-plugin"],
+          },
+        ],
+      });
+
+      if (!filePath || Array.isArray(filePath)) {
+        return;
+      }
+
+      const result = await invoke<PluginPackageInstallResult>(
+        "install_plugin_package",
+        {
+          filePath,
+        },
+      );
+      const manifest = JSON.parse(result.manifestText) as PluginManifest;
+      const isTemplatePlugin = isCharacterSheetTemplateManifest(manifest);
+      await appStore.installPluginManifest(manifest, {
+        disableAfterInstall: !isTemplatePlugin,
+        enableAfterInstall: isTemplatePlugin,
+      });
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin manifest could not be read.",
+        error instanceof Error ? error.message : "Plugin package could not be installed.",
       );
     } finally {
       setIsInstalling(false);
+    }
+  }
 
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+  async function openPluginFolder() {
+    setInstallError(null);
+
+    try {
+      await invoke<string>("open_plugin_directory");
+    } catch (error) {
+      setInstallError(
+        error instanceof Error ? error.message : "Plugin directory could not be opened.",
+      );
+    }
+  }
+
+  async function setPluginEnabled(pluginId: string, enabled: boolean) {
+    setUpdatingPluginId(pluginId);
+    setInstallError(null);
+
+    try {
+      await appStore.setPluginEnabled(pluginId, enabled);
+    } catch (error) {
+      setInstallError(
+        error instanceof Error ? error.message : "Plugin setting could not be updated.",
+      );
+    } finally {
+      setUpdatingPluginId(null);
+    }
+  }
+
+  async function reinstallPluginTemplates(pluginId: string) {
+    setUpdatingPluginId(pluginId);
+    setInstallError(null);
+
+    try {
+      await appStore.reinstallPluginTemplates(pluginId);
+    } catch (error) {
+      setInstallError(
+        error instanceof Error ? error.message : "Plugin templates could not be reinstalled.",
+      );
+    } finally {
+      setUpdatingPluginId(null);
+    }
+  }
+
+  async function uninstallPlugin(pluginId: string, pluginName: string) {
+    if (!window.confirm(`Uninstall plugin "${pluginName}"?`)) {
+      return;
+    }
+
+    setUpdatingPluginId(pluginId);
+    setInstallError(null);
+
+    try {
+      await appStore.uninstallPlugin(pluginId);
+    } catch (error) {
+      setInstallError(
+        error instanceof Error ? error.message : "Plugin could not be uninstalled.",
+      );
+    } finally {
+      setUpdatingPluginId(null);
     }
   }
 
@@ -74,30 +184,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             <div className="settings-panel-heading">
               <div>
                 <h4>Installed Plugins</h4>
-                <p>Install a plugin manifest JSON file.</p>
+                <p>Install a Soloist plugin package.</p>
               </div>
-              <button
-                disabled={isInstalling}
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-              >
-                <Upload aria-hidden="true" />
-                Install Plugin
-              </button>
-              <input
-                accept="application/json,.json"
-                aria-label="Plugin manifest file"
-                hidden
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-
-                  if (file) {
-                    void installPluginFromFile(file);
-                  }
-                }}
-                ref={fileInputRef}
-                type="file"
-              />
+              <div className="settings-panel-actions">
+                <button
+                  disabled={isInstalling}
+                  onClick={() => void installPluginFromPackage()}
+                  type="button"
+                >
+                  <Upload aria-hidden="true" />
+                  Install Plugin
+                </button>
+                <button onClick={() => void openPluginFolder()} type="button">
+                  <FolderOpen aria-hidden="true" />
+                  Open Folder
+                </button>
+              </div>
             </div>
 
             {pluginStatuses.length === 0 ? (
@@ -111,10 +213,54 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       <p>
                         {plugin.pluginId} · v{plugin.version}
                       </p>
+                      <p>{createPluginTypeText(plugin)}</p>
                     </div>
-                    <span className={`plugin-status-badge ${plugin.status}`}>
-                      {plugin.status}
-                    </span>
+                    <div className="plugin-settings-controls">
+                      <span className={`plugin-status-badge ${plugin.status}`}>
+                        {plugin.status}
+                      </span>
+                      {plugin.isCharacterSheetTemplatePlugin ? (
+                        <button
+                          disabled={updatingPluginId === plugin.pluginId}
+                          onClick={() =>
+                            void reinstallPluginTemplates(plugin.pluginId)
+                          }
+                          title="Add fresh copies of this plugin's templates"
+                          type="button"
+                        >
+                          <RefreshCw aria-hidden="true" />
+                          Reinstall
+                        </button>
+                      ) : (
+                        <button
+                          aria-pressed={plugin.enabled}
+                          disabled={updatingPluginId === plugin.pluginId}
+                          onClick={() =>
+                            void setPluginEnabled(plugin.pluginId, !plugin.enabled)
+                          }
+                          title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
+                          type="button"
+                        >
+                          {plugin.enabled ? (
+                            <ToggleRight aria-hidden="true" />
+                          ) : (
+                            <ToggleLeft aria-hidden="true" />
+                          )}
+                          {plugin.enabled ? "Enabled" : "Disabled"}
+                        </button>
+                      )}
+                      <button
+                        disabled={updatingPluginId === plugin.pluginId}
+                        onClick={() =>
+                          void uninstallPlugin(plugin.pluginId, plugin.name)
+                        }
+                        title="Uninstall plugin"
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" />
+                        Uninstall
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>

@@ -1754,6 +1754,14 @@ nav button.active,
   opacity: 0.6;
 }
 
+.settings-panel-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .settings-empty,
 .settings-status,
 .settings-error {
@@ -1796,6 +1804,15 @@ nav button.active,
 
 .plugin-settings-item p {
   overflow-wrap: anywhere;
+}
+
+.plugin-settings-controls {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .plugin-status-badge {

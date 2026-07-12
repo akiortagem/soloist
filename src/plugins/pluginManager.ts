@@ -38,6 +38,9 @@ export type PluginManagerStatus = {
   name: string;
   version: string;
   enabled: boolean;
+  typeLabel: string;
+  contributionLabels: string[];
+  isCharacterSheetTemplatePlugin: boolean;
   status: PluginManagerStatusKind;
   contributions: PluginContributionCounts;
   errors: PluginManifestValidationError[];
@@ -210,6 +213,9 @@ export class PluginManager {
       name: plugin.name,
       version: plugin.version,
       enabled: plugin.enabled,
+      typeLabel: createPluginTypeLabel(plugin),
+      contributionLabels: createPluginContributionLabels(plugin),
+      isCharacterSheetTemplatePlugin: isCharacterSheetTemplatePlugin(plugin),
       status,
       contributions: { ...contributions },
       errors: errors.map((error) => ({ ...error })),
@@ -221,9 +227,40 @@ function createContributionId(pluginId: string, contributionId: string) {
   return `${pluginId}:${contributionId}`;
 }
 
+function createPluginTypeLabel(plugin: InstalledPluginRecord) {
+  return plugin.type === "data" ? "Data" : plugin.type;
+}
+
+function createPluginContributionLabels(plugin: InstalledPluginRecord) {
+  const contributions = plugin.manifest.contributes;
+  const labels: string[] = [];
+
+  if ((contributions?.characterSheetTemplates?.length ?? 0) > 0) {
+    labels.push("Character sheet template");
+  }
+
+  if ((contributions?.slashCommands?.length ?? 0) > 0) {
+    labels.push("Slash command");
+  }
+
+  if (
+    (contributions?.randomTables?.length ?? 0) > 0 ||
+    (contributions?.oracleTables?.length ?? 0) > 0
+  ) {
+    labels.push("Oracle table");
+  }
+
+  return labels;
+}
+
+function isCharacterSheetTemplatePlugin(plugin: InstalledPluginRecord) {
+  return (plugin.manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0;
+}
+
 function cloneStatus(status: PluginManagerStatus): PluginManagerStatus {
   return {
     ...status,
+    contributionLabels: [...status.contributionLabels],
     contributions: { ...status.contributions },
     errors: status.errors.map((error) => ({ ...error })),
   };
