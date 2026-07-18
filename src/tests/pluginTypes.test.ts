@@ -150,7 +150,7 @@ describe("plugin manifest validation", () => {
   it("rejects an unknown plugin type", () => {
     const result = validatePluginManifest({
       ...validManifest,
-      type: "script",
+      type: "external",
     });
 
     expect(result.ok).toBe(false);
@@ -158,7 +158,34 @@ describe("plugin manifest validation", () => {
     expect(result.errors).toContainEqual({
       path: "$.type",
       code: "UNKNOWN_PLUGIN_TYPE",
-      message: 'Plugin type must be "data"',
+      message: 'Plugin type must be "data" or "script"',
+    });
+  });
+
+  it("accepts a script plugin manifest with a compiled JavaScript entry", () => {
+    const result = validatePluginManifest({
+      id: "soloist-plugin.script-example",
+      name: "Script Example",
+      version: "1.0.0",
+      soloistApiVersion: "1",
+      type: "script",
+      entry: "dist/plugin.js",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.manifest.entry).toBe("dist/plugin.js");
+  });
+
+  it("requires an entry for script plugins", () => {
+    const result = validatePluginManifest(invalidScriptPluginFixture);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.entry",
+      code: "MISSING_FIELD",
+      message: "Missing required field: entry",
     });
   });
 

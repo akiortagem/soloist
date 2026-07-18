@@ -2,6 +2,7 @@ import {
   CharacterSheetTemplateRegistry,
   characterSheetTemplateRegistry,
 } from "../characterSheets/characterSheetTemplateRegistry";
+import { invoke } from "@tauri-apps/api/core";
 import {
   SlashCommandRegistry,
   slashCommandRegistry,
@@ -20,6 +21,10 @@ import {
   type PluginManifestValidationError,
   validatePluginManifest,
 } from "./pluginTypes";
+import {
+  type ScriptPluginRuntime,
+  WorkerScriptPluginRuntime,
+} from "./scriptPluginRuntime";
 
 export type PluginManagerStatusKind =
   | "loaded"
@@ -52,6 +57,17 @@ export type PluginManagerRegistries = {
   characterSheetTemplates: CharacterSheetTemplateRegistry;
 };
 
+export type PluginEntryReader = (input: {
+  pluginId: string;
+  entry: string;
+}) => Promise<string>;
+
+export type PluginManagerOptions = {
+  registries?: PluginManagerRegistries;
+  scriptRuntime?: ScriptPluginRuntime;
+  readPluginEntry?: PluginEntryReader;
+};
+
 const EMPTY_COUNTS: PluginContributionCounts = {
   slashCommands: 0,
   oracleTables: 0,
@@ -61,15 +77,27 @@ const EMPTY_COUNTS: PluginContributionCounts = {
 export class PluginManager {
   private readonly statuses = new Map<string, PluginManagerStatus>();
   private readonly loadedPluginIds = new Set<string>();
+  private readonly registries: PluginManagerRegistries;
+  private readonly scriptRuntime: ScriptPluginRuntime;
+  private readonly readPluginEntry: PluginEntryReader;
 
   constructor(
     private readonly pluginRepository: PluginRepository,
-    private readonly registries: PluginManagerRegistries = {
+    optionsOrRegistries: PluginManagerOptions | PluginManagerRegistries = {},
+  ) {
+    const options = isPluginManagerRegistries(optionsOrRegistries)
+      ? { registries: optionsOrRegistries }
+      : optionsOrRegistries;
+
+    this.registries = options.registries ?? {
       slashCommands: slashCommandRegistry,
       oracleTables: oracleTableRegistry,
       characterSheetTemplates: characterSheetTemplateRegistry,
-    },
-  ) {}
+    };
+    this.scriptRuntime =
+      options.scriptRuntime ?? new WorkerScriptPluginRuntime(pluginRepository);
+    this.readPluginEntry = options.readPluginEntry ?? readInstalledPluginEntry;
+  }
 
   async reload(): Promise<PluginManagerStatus[]> {
     const plugins = await this.pluginRepository.listInstalled();
@@ -78,7 +106,7 @@ export class PluginManager {
     this.statuses.clear();
 
     for (const plugin of plugins) {
-      const status = this.loadPlugin(plugin);
+      const status = await this.loadPlugin(plugin);
       this.statuses.set(plugin.id, status);
     }
 
@@ -104,12 +132,13 @@ export class PluginManager {
       this.registries.slashCommands.unregisterPlugin(pluginId);
       this.registries.oracleTables.unregisterPlugin(pluginId);
       this.registries.characterSheetTemplates.unregisterPlugin(pluginId);
+      this.scriptRuntime.deactivatePlugin(pluginId);
     }
 
     this.loadedPluginIds.clear();
   }
 
-  private loadPlugin(plugin: InstalledPluginRecord): PluginManagerStatus {
+  private async loadPlugin(plugin: InstalledPluginRecord): Promise<PluginManagerStatus> {
     if (!plugin.enabled) {
       return this.createStatus(plugin, "disabled");
     }
@@ -121,7 +150,10 @@ export class PluginManager {
     }
 
     try {
-      const counts = this.applyContributions(plugin);
+      const counts =
+        plugin.type === "script"
+          ? await this.applyScriptPluginContributions(plugin)
+          : this.applyDataPluginContributions(plugin);
       this.loadedPluginIds.add(plugin.id);
       return this.createStatus(plugin, "loaded", [], counts);
     } catch (error) {
@@ -139,7 +171,7 @@ export class PluginManager {
     }
   }
 
-  private applyContributions(
+  private applyDataPluginContributions(
     plugin: InstalledPluginRecord,
   ): PluginContributionCounts {
     const contributions = plugin.manifest.contributes;
@@ -202,6 +234,75 @@ export class PluginManager {
     return counts;
   }
 
+  private async applyScriptPluginContributions(
+    plugin: InstalledPluginRecord,
+  ): Promise<PluginContributionCounts> {
+    const counts: PluginContributionCounts = { ...EMPTY_COUNTS };
+    const entry = plugin.manifest.entry;
+
+    if (!entry) {
+      throw new Error("Script plugin entry is required");
+    }
+
+    const entryCode = await this.readPluginEntry({
+      pluginId: plugin.id,
+      entry,
+    });
+    const activation = await this.scriptRuntime.activatePlugin({
+      pluginId: plugin.id,
+      entryCode,
+      onRuntimeError: (message) => this.setRuntimeErrorStatus(plugin, message),
+    });
+
+    for (const command of activation.slashCommands) {
+      this.registries.slashCommands.register({
+        id: createContributionId(plugin.id, command.id),
+        name: command.name,
+        label: command.label,
+        description: command.description,
+        prefix: command.prefix,
+        source: "plugin",
+        pluginId: plugin.id,
+        parse: ({ raw, commandName, argsText }) => ({
+          type: "scriptPlugin",
+          raw,
+          commandName,
+          pluginId: plugin.id,
+          commandId: command.id,
+          argsText,
+          args: splitCommandArgs(argsText),
+          execute: (context) =>
+            this.scriptRuntime.executeCommand(plugin.id, command.id, context),
+        }),
+      } satisfies SlashCommandDefinition);
+      counts.slashCommands += 1;
+    }
+
+    return counts;
+  }
+
+  private setRuntimeErrorStatus(
+    plugin: InstalledPluginRecord,
+    message: string,
+  ): void {
+    const current = this.statuses.get(plugin.id);
+    const error: PluginManifestValidationError = {
+      path: "$.entry",
+      code: "INVALID_FIELD_VALUE",
+      message,
+    };
+
+    this.statuses.set(
+      plugin.id,
+      this.createStatus(
+        plugin,
+        "error",
+        [...(current?.errors ?? []), error],
+        current?.contributions ?? EMPTY_COUNTS,
+      ),
+    );
+  }
+
   private createStatus(
     plugin: InstalledPluginRecord,
     status: PluginManagerStatusKind,
@@ -227,8 +328,30 @@ function createContributionId(pluginId: string, contributionId: string) {
   return `${pluginId}:${contributionId}`;
 }
 
+async function readInstalledPluginEntry(input: {
+  pluginId: string;
+  entry: string;
+}) {
+  return invoke<string>("read_plugin_entry", input);
+}
+
+function splitCommandArgs(argsText: string) {
+  const trimmed = argsText.trim();
+  return trimmed.length === 0 ? [] : trimmed.split(/\s+/);
+}
+
+function isPluginManagerRegistries(
+  value: PluginManagerOptions | PluginManagerRegistries,
+): value is PluginManagerRegistries {
+  return (
+    "slashCommands" in value &&
+    "oracleTables" in value &&
+    "characterSheetTemplates" in value
+  );
+}
+
 function createPluginTypeLabel(plugin: InstalledPluginRecord) {
-  return plugin.type === "data" ? "Data" : plugin.type;
+  return plugin.type === "data" ? "Data" : "Script";
 }
 
 function createPluginContributionLabels(plugin: InstalledPluginRecord) {

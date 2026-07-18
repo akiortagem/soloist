@@ -1,6 +1,14 @@
 import type { OracleOdds } from "../oracle/oracleTypes";
+import type {
+  PluginCommandContext,
+  PluginCommandExecutionResult,
+} from "../plugins/pluginApi";
 
 export type { OracleOdds };
+
+export type ScriptPluginCommandExecutor = (
+  context: PluginCommandContext,
+) => Promise<PluginCommandExecutionResult>;
 
 export type ParsedRollCommand = {
   type: "roll";
@@ -57,6 +65,17 @@ export type ParsedPluginRandomTableCommand = {
   tableId: string;
 };
 
+export type ParsedScriptPluginCommand = {
+  type: "scriptPlugin";
+  raw: string;
+  commandName: string;
+  pluginId: string;
+  commandId: string;
+  args: string[];
+  argsText: string;
+  execute: ScriptPluginCommandExecutor;
+};
+
 export type ParsedUnknownCommand = {
   type: "unknown";
   raw: string;
@@ -80,5 +99,6 @@ export type ParsedCommand =
   | ParsedTrackerStatCommand
   | ParsedChaosCommand
   | ParsedPluginRandomTableCommand
+  | ParsedScriptPluginCommand
   | ParsedInvalidCommand
   | ParsedUnknownCommand;

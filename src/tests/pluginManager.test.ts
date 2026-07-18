@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CharacterSheetTemplateRegistry } from "../characterSheets/characterSheetTemplateRegistry";
+import { executeCommand } from "../commands/executeCommand";
 import { parseCommand } from "../commands/parseCommand";
 import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
 import { OracleTableRegistry } from "../oracle/oracleRegistry";
@@ -9,6 +10,11 @@ import type {
   PluginRepository,
 } from "../persistence/pluginRepository";
 import { PluginManager } from "../plugins/pluginManager";
+import type {
+  ScriptPluginRuntime,
+  ScriptPluginRuntimeActivateInput,
+  ScriptPluginSlashCommandRegistration,
+} from "../plugins/scriptPluginRuntime";
 import type { PluginManifest } from "../plugins/pluginTypes";
 
 const validManifest: PluginManifest = {
@@ -80,6 +86,42 @@ class FakePluginRepository {
   }
 }
 
+class FakeScriptPluginRuntime implements ScriptPluginRuntime {
+  activated: ScriptPluginRuntimeActivateInput[] = [];
+  commandRegistrations: ScriptPluginSlashCommandRegistration[] = [
+    {
+      id: "hello",
+      name: "hello",
+      label: "Hello",
+      prefix: "/hello ",
+      description: "Say hello.",
+    },
+  ];
+  executeResult = {
+    type: "insertResultBlock",
+    display: "block",
+    block: {
+      type: "oracle",
+      payload: {
+        text: "Hello from script plugin.",
+      },
+    },
+  } as const;
+
+  async activatePlugin(input: ScriptPluginRuntimeActivateInput) {
+    this.activated.push(input);
+    return {
+      slashCommands: this.commandRegistrations,
+    };
+  }
+
+  async executeCommand() {
+    return this.executeResult;
+  }
+
+  deactivatePlugin() {}
+}
+
 function createPlugin(
   manifest: PluginManifest,
   input?: Partial<InstalledPluginRecord>,
@@ -114,6 +156,15 @@ function createManager(plugins: InstalledPluginRecord[]) {
     registries,
   };
 }
+
+const scriptManifest: PluginManifest = {
+  id: "soloist-plugin.script",
+  name: "Script Plugin",
+  version: "1.0.0",
+  soloistApiVersion: "1",
+  type: "script",
+  entry: "dist/plugin.js",
+};
 
 describe("PluginManager", () => {
   it("loads enabled data plugin contributions into registries", async () => {
@@ -265,5 +316,128 @@ describe("PluginManager", () => {
     expect(registries.slashCommands.getByName("other")).toMatchObject({
       pluginId: "soloist-plugin.other",
     });
+  });
+
+  it("loads script plugin entry code and registers runtime slash commands", async () => {
+    const repository = new FakePluginRepository([createPlugin(scriptManifest)]);
+    const registries = {
+      slashCommands: new SlashCommandRegistry(),
+      oracleTables: new OracleTableRegistry(),
+      characterSheetTemplates: new CharacterSheetTemplateRegistry(),
+    };
+    const runtime = new FakeScriptPluginRuntime();
+    const manager = new PluginManager(
+      repository as unknown as PluginRepository,
+      {
+        registries,
+        scriptRuntime: runtime,
+        readPluginEntry: async ({ pluginId, entry }) =>
+          `${pluginId}:${entry}:compiled-js`,
+      },
+    );
+
+    const statuses = await manager.reload();
+    const parsed = parseCommand("/hello traveler", registries.slashCommands);
+
+    expect(runtime.activated[0]).toMatchObject({
+      pluginId: scriptManifest.id,
+      entryCode: "soloist-plugin.script:dist/plugin.js:compiled-js",
+    });
+    expect(statuses).toMatchObject([
+      {
+        pluginId: scriptManifest.id,
+        status: "loaded",
+        contributions: {
+          slashCommands: 1,
+        },
+      },
+    ]);
+    expect(registries.slashCommands.getByName("hello")).toMatchObject({
+      id: "soloist-plugin.script:hello",
+      pluginId: scriptManifest.id,
+    });
+    expect(parsed).toMatchObject({
+      type: "scriptPlugin",
+      raw: "/hello traveler",
+      commandName: "hello",
+      pluginId: scriptManifest.id,
+      commandId: "hello",
+      args: ["traveler"],
+      argsText: "traveler",
+    });
+  });
+
+  it("applies script command output through the safe command-result model", async () => {
+    const repository = new FakePluginRepository([createPlugin(scriptManifest)]);
+    const registries = {
+      slashCommands: new SlashCommandRegistry(),
+      oracleTables: new OracleTableRegistry(),
+      characterSheetTemplates: new CharacterSheetTemplateRegistry(),
+    };
+    const runtime = new FakeScriptPluginRuntime();
+    const manager = new PluginManager(
+      repository as unknown as PluginRepository,
+      {
+        registries,
+        scriptRuntime: runtime,
+        readPluginEntry: async () => "compiled-js",
+      },
+    );
+    await manager.reload();
+
+    const parsed = parseCommand("/hello traveler", registries.slashCommands);
+    const result = await executeCommand(parsed, {
+      chaosFactor: 6,
+      isInsideCombatSpace: false,
+    });
+
+    expect(result).toMatchObject({
+      type: "insertResultBlock",
+      display: "block",
+      block: {
+        type: "oracle",
+        commandText: "/hello traveler",
+        payload: {
+          text: "Hello from script plugin.",
+        },
+      },
+    });
+  });
+
+  it("reports script runtime errors through plugin status without throwing", async () => {
+    const repository = new FakePluginRepository([createPlugin(scriptManifest)]);
+    const runtime: ScriptPluginRuntime = {
+      async activatePlugin(input) {
+        input.onRuntimeError?.("Script exploded");
+        throw new Error("Script exploded");
+      },
+      async executeCommand() {
+        throw new Error("Should not execute");
+      },
+      deactivatePlugin() {},
+    };
+    const manager = new PluginManager(
+      repository as unknown as PluginRepository,
+      {
+        scriptRuntime: runtime,
+        readPluginEntry: async () => "compiled-js",
+      },
+    );
+
+    const statuses = await manager.reload();
+
+    expect(statuses).toMatchObject([
+      {
+        pluginId: scriptManifest.id,
+        status: "error",
+        errors: [
+          {
+            path: "$",
+            code: "INVALID_FIELD_VALUE",
+            message: "Script exploded",
+          },
+        ],
+      },
+    ]);
   });
 });

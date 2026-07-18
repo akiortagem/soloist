@@ -3,10 +3,23 @@
 Soloist plugin packages are `.soloist-plugin` files. A `.soloist-plugin` file is
 a zip archive with a `plugin.json` manifest at the package root.
 
-Initial Soloist plugins are data-only. They can contribute declarative content
-such as slash commands, random tables, oracle tables, and character sheet
-templates. Soloist does not load TypeScript source from plugins, and script
-plugins are not available.
+Soloist supports data plugins and compiled-JavaScript script plugins. Data
+plugins contribute declarative content such as slash commands, random tables,
+oracle tables, and character sheet templates. Script plugins run from a compiled
+JavaScript entry file through an isolated Worker runtime.
+
+Soloist defines the public TypeScript SDK surface for compiled-JavaScript script
+plugins in `src/plugins/pluginApi.ts`. Plugin authors should write script
+plugins in TypeScript against those public types, then ship compiled JavaScript
+in the installed plugin package. Soloist will not load TypeScript source files
+from installed plugins.
+
+The public SDK is intentionally narrow. It exposes slash command registration,
+oracle provider registration, plugin-local storage, notifications, status
+updates, and safe command context values such as command arguments, chaos
+factor, plugin id, and a selected-text placeholder for future document-aware
+commands. It does not expose app internals such as the app store, repositories,
+SQLite access, Tiptap editor objects, or raw Tauri invoke.
 
 ## Package Layout
 
@@ -39,15 +52,20 @@ Required fields:
 | `name` | string | Display name. |
 | `version` | string | Plugin version. |
 | `soloistApiVersion` | string | Soloist plugin API version. Current examples use `"1"`. |
-| `type` | string | Must be `"data"`. |
+| `type` | string | Must be `"data"` or `"script"`. |
 
 Optional fields:
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `contributes` | object | Declarative content contributed by the plugin. |
+| `entry` | string | Required for script plugins. Relative path to the compiled JavaScript entry file. |
 
 Unknown manifest fields are rejected.
+
+Script plugin `entry` paths must be relative package paths. Parent-directory,
+absolute, and platform-prefix paths are rejected. The entry file is read from
+the installed plugin folder and executed outside the main React app context.
 
 ```json
 {
@@ -57,6 +75,19 @@ Unknown manifest fields are rejected.
   "soloistApiVersion": "1",
   "type": "data",
   "contributes": {}
+}
+```
+
+Script plugin manifest example:
+
+```json
+{
+  "id": "soloist-plugin.script-example",
+  "name": "Script Example",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "script",
+  "entry": "dist/plugin.js"
 }
 ```
 

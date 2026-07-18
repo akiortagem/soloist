@@ -13,6 +13,7 @@ fn main() {
             commands::install_plugin_package,
             commands::open_plugin_directory,
             commands::list_installed_plugin_folders,
+            commands::read_plugin_entry,
             commands::uninstall_plugin_folder,
         ])
         .plugin(tauri_plugin_dialog::init())

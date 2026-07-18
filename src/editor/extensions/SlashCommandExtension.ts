@@ -55,20 +55,22 @@ export const SlashCommandExtension = Extension.create({
         const commandText = textBeforeCursor.slice(commandStart);
         const parsedCommand = parseCommand(commandText);
         const snapshot = appStore.getSnapshot();
-        const commandResult = executeCommand(parsedCommand, {
+        void executeCommand(parsedCommand, {
           chaosFactor:
             snapshot.activeSession?.chaosFactor ?? snapshot.chaosFactor,
           isInsideCombatSpace:
             findAncestorDepth(editor.state, "combatSpace") !== null,
+        }).then((commandResult) => {
+          applyCommandResult({
+            editor,
+            result: commandResult,
+            commandStart,
+            cursor: $from,
+            paragraph: parent,
+          });
         });
 
-        return applyCommandResult({
-          editor,
-          result: commandResult,
-          commandStart,
-          cursor: $from,
-          paragraph: parent,
-        });
+        return true;
       },
     };
   },

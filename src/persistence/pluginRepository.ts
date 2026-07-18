@@ -193,4 +193,31 @@ export class PluginRepository {
 
     return storage;
   }
+
+  async removeStorage(pluginId: string, key: string) {
+    await this.db.execute(
+      `DELETE FROM plugin_storage
+       WHERE plugin_id = $1
+         AND key = $2`,
+      [pluginId, key],
+    );
+  }
+
+  async listStorageKeys(pluginId: string) {
+    const rows = await this.db.select<Array<{ key: string }>>(
+      `SELECT key
+       FROM plugin_storage
+       WHERE plugin_id = $1
+       ORDER BY key ASC`,
+      [pluginId],
+    );
+
+    return rows.map((row) => row.key);
+  }
+
+  async clearStorage(pluginId: string) {
+    await this.db.execute(`DELETE FROM plugin_storage WHERE plugin_id = $1`, [
+      pluginId,
+    ]);
+  }
 }

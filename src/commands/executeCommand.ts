@@ -5,6 +5,11 @@ import type {
   ResultBlock,
   SceneContainerPayload,
 } from "../domain/domainTypes";
+import type {
+  PluginCommandExecutionResult,
+  PluginJsonValue,
+  PluginResultBlock,
+} from "../plugins/pluginApi";
 import type { AppState } from "../state/appStore";
 import { appStore } from "../state/appStore";
 import type { ParsedCommand } from "./commandTypes";
@@ -135,6 +140,13 @@ function createCommandResultBlock(
       );
     case "pluginRandomTable":
       return createPluginRandomTableCommandResultBlock(command);
+    case "scriptPlugin":
+      return createUnknownCommandResultBlock({
+        type: "unknown",
+        raw: command.raw,
+        commandName: command.commandName,
+        reason: "Script plugin command was not executed",
+      });
     case "invalid":
       return createInvalidCommandResultBlock(command);
     case "unknown":
@@ -175,6 +187,126 @@ function errorResult(commandText: string, commandName: string, reason: string) {
     }),
     "block",
   );
+}
+
+function isJsonSafe(value: unknown): value is PluginJsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonSafe);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.values(value).every(isJsonSafe);
+  }
+
+  return false;
+}
+
+function isPluginResultBlock(value: unknown): value is PluginResultBlock {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const block = value as Record<string, unknown>;
+  const validBlockTypes = [
+    "roll",
+    "oracle",
+    "scene",
+    "combat",
+    "stat",
+    "chaos",
+    "error",
+  ];
+
+  return (
+    typeof block.type === "string" &&
+    validBlockTypes.includes(block.type) &&
+    (block.commandText === undefined || typeof block.commandText === "string") &&
+    (block.collapsed === undefined || typeof block.collapsed === "boolean") &&
+    (block.payload === undefined || isJsonSafe(block.payload))
+  );
+}
+
+function isPluginCommandExecutionResult(
+  value: unknown,
+): value is PluginCommandExecutionResult {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const result = value as Record<string, unknown>;
+
+  if (result.type === "deleteCommand") {
+    return true;
+  }
+
+  return (
+    result.type === "insertResultBlock" &&
+    isPluginResultBlock(result.block) &&
+    (result.display === undefined ||
+      result.display === "inline" ||
+      result.display === "block")
+  );
+}
+
+function pluginResultBlockAction(
+  result: PluginCommandExecutionResult,
+  commandText: string,
+): CommandExecutionResult {
+  if (result.type === "deleteCommand") {
+    return result;
+  }
+
+  const block = result.block;
+  const resultBlock: ResultBlock = {
+    id: createId(block.type),
+    type: block.type,
+    createdAt: new Date().toISOString(),
+    commandText: block.commandText ?? commandText,
+    collapsed: block.collapsed,
+    payload: block.payload ?? {},
+  };
+
+  return resultBlockAction(resultBlock, result.display);
+}
+
+async function executeScriptPluginCommand(
+  command: Extract<ParsedCommand, { type: "scriptPlugin" }>,
+  context: CommandExecutionContext,
+): Promise<CommandExecutionResult> {
+  try {
+    const result = await command.execute({
+      pluginId: command.pluginId,
+      args: command.args,
+      argsText: command.argsText,
+      chaosFactor: context.chaosFactor,
+      selectedText: null,
+    });
+
+    if (!isPluginCommandExecutionResult(result)) {
+      return errorResult(
+        command.raw,
+        command.commandName,
+        "Script plugin returned an invalid command result",
+      );
+    }
+
+    return pluginResultBlockAction(result, command.raw);
+  } catch (error) {
+    return errorResult(
+      command.raw,
+      command.commandName,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function executeCombatCommand(
@@ -281,10 +413,10 @@ function executeCombatCommand(
   };
 }
 
-export function executeCommand(
+export async function executeCommand(
   command: ParsedCommand,
   context: CommandExecutionContext,
-): CommandExecutionResult {
+): Promise<CommandExecutionResult> {
   const snapshot = appStore.getSnapshot();
 
   if (command.type === "scene") {
@@ -304,6 +436,10 @@ export function executeCommand(
 
   if (command.type === "combat") {
     return executeCombatCommand(command, snapshot, context);
+  }
+
+  if (command.type === "scriptPlugin") {
+    return executeScriptPluginCommand(command, context);
   }
 
   return resultBlockAction(createCommandResultBlock(command, context));

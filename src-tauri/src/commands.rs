@@ -171,6 +171,73 @@ pub fn list_installed_plugin_folders(app: AppHandle) -> Result<Vec<InstalledPlug
 }
 
 #[tauri::command]
+pub fn read_plugin_entry(
+    app: AppHandle,
+    plugin_id: String,
+    entry: String,
+) -> Result<String, String> {
+    if plugin_id.trim().is_empty() {
+        return Err("Plugin id is required.".to_string());
+    }
+
+    let Some(entry_path) = safe_archive_path(&entry) else {
+        return Err("Script plugin entry path is unsafe.".to_string());
+    };
+    let plugin_dir = app_plugin_dir(&app)?;
+
+    if !plugin_dir.exists() {
+        return Err("Plugin directory does not exist.".to_string());
+    }
+
+    for folder_entry in fs::read_dir(&plugin_dir)
+        .map_err(|error| format!("Plugin directory could not be read: {error}"))?
+    {
+        let folder_entry =
+            folder_entry.map_err(|error| format!("Plugin folder could not be read: {error}"))?;
+        let metadata = folder_entry
+            .metadata()
+            .map_err(|error| format!("Plugin folder metadata could not be read: {error}"))?;
+
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        let manifest_path = folder_entry.path().join(PLUGIN_MANIFEST_FILE);
+        if !manifest_path.is_file() {
+            continue;
+        }
+
+        let manifest_text = fs::read_to_string(&manifest_path).map_err(|error| {
+            format!(
+                "Plugin manifest could not be read from {}: {error}",
+                folder_entry.file_name().to_string_lossy()
+            )
+        })?;
+        let manifest: serde_json::Value =
+            serde_json::from_str(&manifest_text).map_err(|error| {
+                format!(
+                    "Plugin manifest could not be parsed from {}: {error}",
+                    folder_entry.file_name().to_string_lossy()
+                )
+            })?;
+
+        if manifest.get("id").and_then(|id| id.as_str()) != Some(plugin_id.as_str()) {
+            continue;
+        }
+
+        let absolute_entry_path = folder_entry.path().join(entry_path);
+        if !absolute_entry_path.is_file() {
+            return Err(format!("Script plugin entry was not found: {entry}"));
+        }
+
+        return fs::read_to_string(&absolute_entry_path)
+            .map_err(|error| format!("Script plugin entry could not be read: {error}"));
+    }
+
+    Err(format!("Installed plugin folder was not found: {plugin_id}"))
+}
+
+#[tauri::command]
 pub fn uninstall_plugin_folder(app: AppHandle, plugin_id: String) -> Result<bool, String> {
     if plugin_id.trim().is_empty() {
         return Err("Plugin id is required.".to_string());

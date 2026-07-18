@@ -3,7 +3,7 @@ import type {
   CharacterTemplateItem,
 } from "../domain/domainTypes";
 
-export type PluginType = "data";
+export type PluginType = "data" | "script";
 
 export type PluginManifest = {
   id: string;
@@ -11,6 +11,7 @@ export type PluginManifest = {
   version: string;
   soloistApiVersion: string;
   type: PluginType;
+  entry?: string;
   contributes?: PluginContributions;
 };
 
@@ -83,6 +84,7 @@ const MANIFEST_KEYS = [
   "version",
   "soloistApiVersion",
   "type",
+  "entry",
   "contributes",
 ] as const;
 
@@ -174,13 +176,17 @@ function validateManifest(
 
   if (!hasOwn(value, "type")) {
     addMissingField(context, path, "type");
-  } else if (value.type !== "data") {
+  } else if (value.type !== "data" && value.type !== "script") {
     addError(
       context,
       `${path}.type`,
       "UNKNOWN_PLUGIN_TYPE",
-      'Plugin type must be "data"',
+      'Plugin type must be "data" or "script"',
     );
+  } else if (value.type === "script") {
+    requireString(value, "entry", path, context);
+  } else {
+    optionalString(value, "entry", path, context);
   }
 
   if (hasOwn(value, "contributes")) {
