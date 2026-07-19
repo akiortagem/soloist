@@ -1,0 +1,45 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  plugin-path:
+    name: Plugin path (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-22.04
+          - platform: windows
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: npm ci
+      - name: Frontend and real-worker tests
+        run: npm test
+      - name: Rust archive and extraction tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

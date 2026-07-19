@@ -1,0 +1,9 @@
+{
+  "id": "soloist-plugin.e2e",
+  "name": "Packaged E2E Plugin",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "script",
+  "entry": "dist/plugin.js",
+  "permissions": ["storage", "slashCommands:register", "document:insertBlock"]
+}

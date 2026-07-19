@@ -1,0 +1,1 @@
+{"id":"soloist-plugin.denied","name":"Denied Permission","version":"1.0.0","soloistApiVersion":"1","type":"script","entry":"dist/plugin.js","permissions":["slashCommands:register"]}

@@ -12,7 +12,7 @@ use zip::ZipArchive;
 const PLUGIN_DIR_NAME: &str = "plugins";
 const PLUGIN_MANIFEST_FILE: &str = "plugin.json";
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginPackageInstallResult {
     folder_name: String,
@@ -50,27 +50,33 @@ pub fn install_plugin_package(
     app: AppHandle,
     file_path: String,
 ) -> Result<PluginPackageInstallResult, String> {
-    if file_path.trim().is_empty() {
+    let plugin_dir = app_plugin_dir(&app)?;
+    install_plugin_package_into(Path::new(&file_path), &plugin_dir)
+}
+
+fn install_plugin_package_into(
+    package_path: &Path,
+    plugin_dir: &Path,
+) -> Result<PluginPackageInstallResult, String> {
+    if package_path.as_os_str().is_empty() {
         return Err("Choose a .soloist-plugin package to install.".to_string());
     }
 
-    let package_path = PathBuf::from(&file_path);
     if package_path.extension() != Some(OsStr::new("soloist-plugin")) {
         return Err("Choose a .soloist-plugin package.".to_string());
     }
 
-    let package_file = File::open(&package_path)
+    let package_file = File::open(package_path)
         .map_err(|error| format!("Plugin package could not be opened: {error}"))?;
     let mut archive = ZipArchive::new(package_file)
         .map_err(|_| "Plugin package is not a readable zip archive.".to_string())?;
 
     let manifest_text = read_root_manifest_from_archive(&mut archive)?;
     let archive_paths = safe_archive_paths(&mut archive)?;
-    let folder_name = plugin_folder_name_from_package_path(&package_path)?;
-    let plugin_dir = app_plugin_dir(&app)?;
+    let folder_name = plugin_folder_name_from_package_path(package_path)?;
     let target_dir = plugin_dir.join(&folder_name);
 
-    fs::create_dir_all(&plugin_dir)
+    fs::create_dir_all(plugin_dir)
         .map_err(|error| format!("Plugin directory could not be created: {error}"))?;
 
     if target_dir.exists() {
@@ -176,14 +182,21 @@ pub fn read_plugin_entry(
     plugin_id: String,
     entry: String,
 ) -> Result<String, String> {
+    let plugin_dir = app_plugin_dir(&app)?;
+    read_plugin_entry_from(&plugin_dir, &plugin_id, &entry)
+}
+
+fn read_plugin_entry_from(
+    plugin_dir: &Path,
+    plugin_id: &str,
+    entry: &str,
+) -> Result<String, String> {
     if plugin_id.trim().is_empty() {
         return Err("Plugin id is required.".to_string());
     }
-
-    let Some(entry_path) = safe_archive_path(&entry) else {
+    let Some(entry_path) = safe_archive_path(entry) else {
         return Err("Script plugin entry path is unsafe.".to_string());
     };
-    let plugin_dir = app_plugin_dir(&app)?;
 
     if !plugin_dir.exists() {
         return Err("Plugin directory does not exist.".to_string());
@@ -221,7 +234,7 @@ pub fn read_plugin_entry(
                 )
             })?;
 
-        if manifest.get("id").and_then(|id| id.as_str()) != Some(plugin_id.as_str()) {
+        if manifest.get("id").and_then(|id| id.as_str()) != Some(plugin_id) {
             continue;
         }
 
@@ -234,16 +247,21 @@ pub fn read_plugin_entry(
             .map_err(|error| format!("Script plugin entry could not be read: {error}"));
     }
 
-    Err(format!("Installed plugin folder was not found: {plugin_id}"))
+    Err(format!(
+        "Installed plugin folder was not found: {plugin_id}"
+    ))
 }
 
 #[tauri::command]
 pub fn uninstall_plugin_folder(app: AppHandle, plugin_id: String) -> Result<bool, String> {
+    let plugin_dir = app_plugin_dir(&app)?;
+    uninstall_plugin_folder_from(&plugin_dir, &plugin_id)
+}
+
+fn uninstall_plugin_folder_from(plugin_dir: &Path, plugin_id: &str) -> Result<bool, String> {
     if plugin_id.trim().is_empty() {
         return Err("Plugin id is required.".to_string());
     }
-
-    let plugin_dir = app_plugin_dir(&app)?;
 
     if !plugin_dir.exists() {
         return Ok(false);
@@ -280,7 +298,7 @@ pub fn uninstall_plugin_folder(app: AppHandle, plugin_id: String) -> Result<bool
                 )
             })?;
 
-        if manifest.get("id").and_then(|id| id.as_str()) == Some(plugin_id.as_str()) {
+        if manifest.get("id").and_then(|id| id.as_str()) == Some(plugin_id) {
             fs::remove_dir_all(entry.path())
                 .map_err(|error| format!("Plugin folder could not be removed: {error}"))?;
             return Ok(true);
@@ -402,8 +420,43 @@ fn open_path(path: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::safe_archive_path;
-    use std::path::PathBuf;
+    use super::{
+        install_plugin_package_into, read_plugin_entry_from, safe_archive_path,
+        uninstall_plugin_folder_from,
+    };
+    use std::{
+        fs,
+        io::Write,
+        path::{Path, PathBuf},
+    };
+    use tempfile::TempDir;
+    use zip::{write::SimpleFileOptions, ZipWriter};
+
+    const MANIFEST: &str = r#"{
+  "id": "soloist-plugin.e2e",
+  "name": "Packaged E2E Plugin",
+  "version": "1.0.0",
+  "soloistApiVersion": "1",
+  "type": "script",
+  "entry": "dist/plugin.js",
+  "permissions": ["storage", "slashCommands:register", "document:insertBlock"]
+}"#;
+    const ENTRY: &str = "module.exports = { activate(api) { api.registerSlashCommand({ id: 'hello', name: 'hello', label: 'Hello', prefix: '/hello', handler() { return { type: 'deleteCommand' }; } }); } };";
+
+    fn package(root: &Path, name: &str, entries: &[(&str, &str)]) -> PathBuf {
+        let path = root.join(format!("{name}.soloist-plugin"));
+        let file = fs::File::create(&path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .last_modified_time(zip::DateTime::default());
+        for (entry_name, contents) in entries {
+            zip.start_file(*entry_name, options).unwrap();
+            zip.write_all(contents.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        path
+    }
 
     #[test]
     fn safe_archive_path_accepts_relative_plugin_paths() {
@@ -423,5 +476,73 @@ mod tests {
         assert_eq!(safe_archive_path("assets/../../plugin.json"), None);
         assert_eq!(safe_archive_path("/tmp/plugin.json"), None);
         assert_eq!(safe_archive_path(""), None);
+    }
+
+    #[test]
+    fn packaged_plugin_installs_reads_entry_and_uninstalls() {
+        let temp = TempDir::new().unwrap();
+        let package_path = package(
+            temp.path(),
+            "packaged-e2e",
+            &[("plugin.json", MANIFEST), ("dist/plugin.js", ENTRY)],
+        );
+        let plugin_dir = temp.path().join("app-data/plugins");
+
+        let installed = install_plugin_package_into(&package_path, &plugin_dir).unwrap();
+
+        assert_eq!(installed.folder_name, "packaged-e2e");
+        assert_eq!(installed.manifest_text, MANIFEST);
+        assert_eq!(
+            read_plugin_entry_from(&plugin_dir, "soloist-plugin.e2e", "dist/plugin.js").unwrap(),
+            ENTRY,
+        );
+        assert!(Path::new(&installed.installed_path)
+            .join("plugin.json")
+            .is_file());
+        assert!(uninstall_plugin_folder_from(&plugin_dir, "soloist-plugin.e2e").unwrap());
+        assert!(!Path::new(&installed.installed_path).exists());
+    }
+
+    #[test]
+    fn package_requires_a_root_manifest_and_existing_entry() {
+        let temp = TempDir::new().unwrap();
+        let plugin_dir = temp.path().join("plugins");
+        let nested = package(temp.path(), "nested", &[("nested/plugin.json", MANIFEST)]);
+        assert!(install_plugin_package_into(&nested, &plugin_dir)
+            .unwrap_err()
+            .contains("plugin.json at the package root"));
+
+        let missing = package(temp.path(), "missing-entry", &[("plugin.json", MANIFEST)]);
+        install_plugin_package_into(&missing, &plugin_dir).unwrap();
+        assert!(
+            read_plugin_entry_from(&plugin_dir, "soloist-plugin.e2e", "dist/plugin.js")
+                .unwrap_err()
+                .contains("entry was not found")
+        );
+    }
+
+    #[test]
+    fn unsafe_package_and_entry_paths_do_not_escape_or_mutate_unrelated_state() {
+        let temp = TempDir::new().unwrap();
+        let plugin_dir = temp.path().join("plugins");
+        fs::create_dir_all(&plugin_dir).unwrap();
+        let sentinel = plugin_dir.join("keep.txt");
+        fs::write(&sentinel, "keep").unwrap();
+        let malicious = package(
+            temp.path(),
+            "malicious",
+            &[("plugin.json", MANIFEST), ("../escaped.js", ENTRY)],
+        );
+
+        assert!(install_plugin_package_into(&malicious, &plugin_dir)
+            .unwrap_err()
+            .contains("unsafe path"));
+        assert_eq!(fs::read_to_string(sentinel).unwrap(), "keep");
+        assert!(!temp.path().join("escaped.js").exists());
+        assert!(
+            read_plugin_entry_from(&plugin_dir, "soloist-plugin.e2e", "../keep.txt")
+                .unwrap_err()
+                .contains("entry path is unsafe")
+        );
     }
 }

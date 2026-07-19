@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "vitest run",
+    "fixtures:build": "node scripts/build-plugin-fixtures.mjs",
+    "test": "npm run fixtures:build && vitest run",
+    "test:rust": "npm run fixtures:build && cargo test --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

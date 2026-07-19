@@ -566,13 +566,13 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       message.type === "commandError" ||
       message.type === "runtimeError"
     ) {
-      state.onRuntimeError?.(message.message);
       if (message.requestId) {
         this.resolvePending(pluginId, message.requestId, {
           ok: false,
           error: message.message,
         });
       }
+      state.onRuntimeError?.(message.message);
       return;
     }
 
@@ -600,11 +600,11 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
         !state.permissions.has("document:insertBlock")
       ) {
         const error = permissionDenied("document:insertBlock");
-        state.onRuntimeError?.(error.message);
         this.resolvePending(pluginId, message.requestId, {
           ok: false,
           error: error.message,
         });
+        state.onRuntimeError?.(error.message);
         return;
       }
       this.resolvePending(pluginId, message.requestId, {
@@ -697,7 +697,6 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      state.onRuntimeError?.(errorMessage);
       if (this.plugins.get(state.pluginId) !== state) return;
       state.worker.postMessage({
         type: "hostResponse",
@@ -793,11 +792,12 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
   private failPluginMessage(pluginId: string, error: unknown, requestId?: string): void {
     const message = `Invalid worker message: ${error instanceof Error ? error.message : String(error)}`;
     const state = this.plugins.get(pluginId);
-    state?.onRuntimeError?.(message);
     if (requestId) {
       this.resolvePending(pluginId, requestId, { ok: false, error: message });
+      state?.onRuntimeError?.(message);
     } else {
       if (state) this.terminateState(state, message);
+      state?.onRuntimeError?.(message);
     }
   }
 
