@@ -1,0 +1,13 @@
+{
+  "name": "@soloist/plugin-sdk",
+  "version": "1.0.0",
+  "description": "Type-only SDK for Soloist script plugins using soloistApiVersion 1",
+  "license": "MIT",
+  "types": "index.d.ts",
+  "files": [
+    "index.d.ts",
+    "README.md"
+  ],
+  "soloistApiVersion": "1",
+  "sideEffects": false
+}

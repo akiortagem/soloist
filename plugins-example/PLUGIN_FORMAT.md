@@ -9,11 +9,15 @@ oracle tables, and character sheet templates. Script plugins run from a compiled
 JavaScript entry file in a Worker. The Worker keeps plugin work off the React
 thread, but it is not a security sandbox. See [Script plugin security](SCRIPT_PLUGIN_SECURITY.md).
 
-Soloist defines the public TypeScript SDK surface for compiled-JavaScript script
-plugins in `src/plugins/pluginApi.ts`. Plugin authors should write script
-plugins in TypeScript against those public types, then ship compiled JavaScript
-in the installed plugin package. Soloist will not load TypeScript source files
-from installed plugins.
+Soloist publishes its public, type-only TypeScript surface as
+`@soloist/plugin-sdk`. In this repository it is installable from
+`packages/soloist-plugin-sdk`. Authors import from that package and never from
+Soloist's `src/` tree. Installed packages contain compiled JavaScript; Soloist
+does not transpile or load TypeScript source.
+
+SDK major versions map directly to manifest API majors: SDK `1.x` is for
+`"soloistApiVersion": "1"`. Minor and patch SDK releases are backward
+compatible. A breaking contract requires a new SDK major and manifest opt-in.
 
 The public SDK is intentionally narrow. It exposes slash command registration,
 plugin-local storage, notifications, status
@@ -28,16 +32,18 @@ The archive must contain `plugin.json` at the root:
 
 ```text
 my-plugin.soloist-plugin
-└── plugin.json
+├── plugin.json
+└── dist/
+    └── plugin.js
 ```
 
-Additional files may be included in the archive, but the app currently reads
-the manifest data from `plugin.json`.
+Data plugins may contain only `plugin.json`. A script plugin's `entry` names its
+compiled JavaScript file relative to the archive root.
 
 To package a plugin source directory:
 
 ```sh
-cd examples/plugins/omen-table
+cd plugins-example/omen-table
 zip -r ../omen-table.soloist-plugin plugin.json
 ```
 
@@ -86,6 +92,12 @@ null, arrays, and plain objects, with bounded nesting and size.
 
 ### Script API v1
 
+Install the SDK in an external project with
+`npm install --save-dev @soloist/plugin-sdk@^1 typescript`. The repository
+reference uses `file:../../packages/soloist-plugin-sdk` so it is reproducible
+before publication. Use `import type`; the SDK contains declarations and no
+runtime code.
+
 `SoloistPluginApi` exposes `pluginId`, plugin-local `storage`,
 `registerSlashCommand`, `registerOracleProvider`, `notify`, `setStatus`, and
 `clearStatus`. Notifications
@@ -132,6 +144,33 @@ Script plugin manifest example:
   "entry": "dist/plugin.js"
 }
 ```
+
+### Supported script module formats
+
+API v1 evaluates a classic compiled script. The entry may expose `activate`
+(and optional `deactivate`) through CommonJS `module.exports`/`exports`, through
+`module.exports.default`, or as `self.soloistPlugin`. Native ESM `import` and
+`export` syntax is not supported in an installed entry.
+
+Compile TypeScript with `"module": "CommonJS"`, as in the
+[reference tsconfig](./script-plugin/tsconfig.json), or bundle it to one
+classic/CommonJS file. Runtime dependencies must be bundled because `require()`
+is not provided by the Worker. Type-only SDK imports disappear during compile.
+
+```text
+script-plugin/
+├── package.json
+├── package-lock.json
+├── plugin.json
+├── tsconfig.json
+├── src/plugin.ts
+├── dist/plugin.js
+└── scripts/package.mjs
+```
+
+Run `npm ci` and `npm run package` in that directory. The result at
+`package/reference-script.soloist-plugin` contains `plugin.json` and
+`dist/plugin.js` at their expected archive paths.
 
 ### Script lifecycle and cleanup
 
@@ -235,14 +274,32 @@ Fields:
 | `fields` | array | Yes | Character sheet template field layout. |
 
 The `fields` array uses Soloist's implemented character sheet template item
-schema. See `examples/plugins/fixtures/valid-data-plugin/plugin.json` for a
+schema. See `plugins-example/fixtures/valid-data-plugin/plugin.json` for a
 small valid template and `plugins-example/simple-char/plugin.json` for a larger
 template layout example.
 
 ## Examples And Fixtures
 
-- `examples/plugins/omen-table/plugin.json` is a valid example data plugin.
-- `examples/plugins/fixtures/valid-data-plugin/plugin.json` is a compact valid
+- `plugins-example/omen-table/plugin.json` is a valid example data plugin.
+- `plugins-example/fixtures/valid-data-plugin/plugin.json` is a compact valid
   manifest fixture.
-- `examples/plugins/fixtures/invalid-*` directories contain invalid manifest
+- `plugins-example/fixtures/invalid-*` directories contain invalid manifest
   fixtures for validation tests.
+
+## Installation and troubleshooting
+
+Install the generated `.soloist-plugin` from Plugins settings. Script plugins
+are installed disabled: review their permissions, then enable and trust them.
+After activation, type `/hello` in an editor command position.
+
+If a command does not appear, confirm the plugin is enabled, check its
+activation status, confirm `plugin.json` is at the archive root, and ensure
+`entry` exactly matches the compiled path (including case). Rebuild and
+repackage after source changes; shipping `src/plugin.ts` does not compile it.
+
+`Plugin permission denied: storage` means code used a capability absent from
+`permissions`. Add the exact permission, rebuild, reinstall, and trust again.
+Slash registration requires `slashCommands:register`; this example also uses
+`storage` and returns a block under `document:insertBlock`. Absolute and `..`
+entry paths are rejected. A syntax error mentioning `export` usually means ESM
+was shipped; build the entry as CommonJS/classic script.

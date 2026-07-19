@@ -1,0 +1,13 @@
+{
+  "name": "soloist-reference-script-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@soloist/plugin-sdk": "file:../../packages/soloist-plugin-sdk",
+    "typescript": "^5.5.4"
+  }
+}

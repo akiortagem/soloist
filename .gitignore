@@ -4,6 +4,8 @@ node_modules/
 # Frontend build output
 dist/
 dist-ssr/
+!plugins-example/script-plugin/dist/
+!plugins-example/script-plugin/dist/plugin.js
 
 # Tauri and Rust build output
 src-tauri/target/

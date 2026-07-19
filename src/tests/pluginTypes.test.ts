@@ -4,6 +4,7 @@ import invalidScriptPluginFixture from "../../plugins-example/fixtures/invalid-s
 import invalidTableEntryFixture from "../../plugins-example/fixtures/invalid-table-entry/plugin.json";
 import validDataPluginFixture from "../../plugins-example/fixtures/valid-data-plugin/plugin.json";
 import validOmenTablePlugin from "../../plugins-example/omen-table/plugin.json";
+import referenceScriptPlugin from "../../plugins-example/script-plugin/plugin.json";
 import { validatePluginManifest } from "../plugins/pluginTypes";
 
 const validManifest = {
@@ -122,6 +123,7 @@ describe("plugin manifest validation", () => {
   it("accepts documented valid plugin fixtures", () => {
     expect(validatePluginManifest(validOmenTablePlugin).ok).toBe(true);
     expect(validatePluginManifest(validDataPluginFixture).ok).toBe(true);
+    expect(validatePluginManifest(referenceScriptPlugin).ok).toBe(true);
   });
 
   it("rejects documented invalid plugin fixtures", () => {
