@@ -49,9 +49,9 @@ export function SceneContainerView({
     });
   }
 
-  function confirmDescription() {
+  async function confirmDescription() {
     const session = appStore.getSnapshot().activeSession;
-    const nextPayload = confirmSceneDescription(payload, session?.chaosFactor);
+    const nextPayload = await confirmSceneDescription(payload, session?.chaosFactor);
 
     if (nextPayload === payload) {
       return;
@@ -67,7 +67,7 @@ export function SceneContainerView({
     }
 
     event.preventDefault();
-    confirmDescription();
+    void confirmDescription();
   }
 
   return (

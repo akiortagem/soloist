@@ -26,6 +26,8 @@ import {
   WorkerScriptPluginRuntime,
 } from "./scriptPluginRuntime";
 import { validateSlashCommandRegistration } from "./pluginValidation";
+import { pluginUiRegistry } from "./pluginUiRegistry";
+import { unregisterPluginOracleProviders } from "../oracle/oracleRegistry";
 
 export type PluginManagerStatusKind =
   | "loaded"
@@ -132,6 +134,8 @@ export class PluginManager {
     ]);
 
     for (const pluginId of pluginIds) {
+      pluginUiRegistry.unregisterPlugin(pluginId);
+      unregisterPluginOracleProviders(pluginId);
       this.registries.slashCommands.unregisterPlugin(pluginId);
       this.registries.oracleTables.unregisterPlugin(pluginId);
       this.registries.characterSheetTemplates.unregisterPlugin(pluginId);
@@ -160,6 +164,8 @@ export class PluginManager {
       this.loadedPluginIds.add(plugin.id);
       return this.createStatus(plugin, "loaded", [], counts);
     } catch (error) {
+      pluginUiRegistry.unregisterPlugin(plugin.id);
+      unregisterPluginOracleProviders(plugin.id);
       this.scriptRuntime.deactivatePlugin(plugin.id);
       this.registries.slashCommands.unregisterPlugin(plugin.id);
       this.registries.oracleTables.unregisterPlugin(plugin.id);
@@ -310,6 +316,8 @@ export class PluginManager {
     };
 
     this.registries.slashCommands.unregisterPlugin(plugin.id);
+    pluginUiRegistry.unregisterPlugin(plugin.id);
+    unregisterPluginOracleProviders(plugin.id);
     this.registries.oracleTables.unregisterPlugin(plugin.id);
     this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
     this.scriptRuntime.deactivatePlugin(plugin.id);

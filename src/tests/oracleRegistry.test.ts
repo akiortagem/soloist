@@ -76,11 +76,11 @@ describe("oracle registry", () => {
     expect(getActiveOracleProvider().id).toBe(DEFAULT_ORACLE_PROVIDER_ID);
   });
 
-  it("uses the active provider for /ask result blocks", () => {
+  it("uses the active provider for /ask result blocks", async () => {
     registerOracleProvider(testOracleProvider);
     setActiveOracleProvider(testOracleProvider.id);
 
-    const block = createAskCommandResultBlock(
+    const block = await createAskCommandResultBlock(
       {
         type: "ask",
         raw: "/ask likely Is the gate open?",

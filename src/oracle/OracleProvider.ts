@@ -9,6 +9,6 @@ export type OracleProvider = {
   id: string;
   name: string;
   description: string;
-  askYesNo(input: AskOracleInput): AskOracleResult;
-  setupScene(input: SceneSetupInput): SceneSetupResult;
+  askYesNo(input: AskOracleInput): Promise<AskOracleResult> | AskOracleResult;
+  setupScene(input: SceneSetupInput): Promise<SceneSetupResult> | SceneSetupResult;
 };

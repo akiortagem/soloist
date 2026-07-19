@@ -4,6 +4,14 @@ import type {
 } from "./pluginApi";
 import type { PluginRepository } from "../persistence/pluginRepository";
 import type { ScriptPluginPermission } from "./pluginTypes";
+import { pluginUiRegistry, type PluginUiRegistry } from "./pluginUiRegistry";
+import type { PluginNotification, PluginStatus } from "./pluginApi";
+import {
+  registerOracleProvider,
+  unregisterOracleProvider,
+  unregisterPluginOracleProviders,
+} from "../oracle/oracleRegistry";
+import type { AskOracleResult, SceneSetupResult } from "../oracle/oracleTypes";
 import {
   assertJsonSafe,
   requireMessageString,
@@ -79,14 +87,10 @@ type WorkerMessage =
       type: "registerSlashCommand";
       command: ScriptPluginSlashCommandRegistration;
     }
-  | {
-      type: "registerOracleProvider";
-      provider: {
-        id: string;
-        name: string;
-        description?: string;
-      };
-    }
+  | { type: "registerOracleProvider"; provider: { id: string; name: string; description?: string } }
+  | { type: "unregisterOracleProvider"; providerId: string }
+  | { type: "oracleResult"; requestId: string; result: unknown }
+  | { type: "oracleError"; requestId: string; message: string }
   | {
       type: "notify" | "setStatus" | "clearStatus";
       payload: unknown;
@@ -167,18 +171,27 @@ function createApi(pluginId, handlers, permissions) {
     },
     registerOracleProvider(provider) {
       requirePermission("oracleProviders:register");
-      post({
-        type: "registerOracleProvider",
-        provider: {
-          id: provider && provider.id,
-          name: provider && provider.name,
-          description:
-            provider && typeof provider.description === "string"
-              ? provider.description
-              : undefined,
-        },
-      });
-      return { dispose() {} };
+      if (!provider || typeof provider !== "object" ||
+          typeof provider.askYesNo !== "function" || typeof provider.setupScene !== "function") {
+        throw new Error("registerOracleProvider requires askYesNo and setupScene handlers");
+      }
+      const safeProvider = {
+        id: provider.id,
+        name: provider.name,
+        description: typeof provider.description === "string" ? provider.description : undefined,
+      };
+      if (handlers.oracleProviders.has(safeProvider.id)) {
+        throw new Error("Duplicate oracle provider id: " + safeProvider.id);
+      }
+      handlers.oracleProviders.set(safeProvider.id, provider);
+      post({ type: "registerOracleProvider", provider: safeProvider });
+      let disposed = false;
+      return { dispose() {
+        if (disposed) return;
+        disposed = true;
+        handlers.oracleProviders.delete(safeProvider.id);
+        post({ type: "unregisterOracleProvider", providerId: safeProvider.id });
+      } };
     },
     notify(notification) {
       post({ type: "notify", payload: notification });
@@ -194,6 +207,7 @@ function createApi(pluginId, handlers, permissions) {
 
 async function activatePlugin(message) {
   const handlers = new Map();
+  handlers.oracleProviders = new Map();
   const permissions = new Set(message.permissions || []);
   const api = createApi(message.pluginId, handlers, permissions);
   const module = { exports: {} };
@@ -253,6 +267,21 @@ async function executeCommand(message) {
   }
 }
 
+async function invokeOracle(message) {
+  const plugin = plugins.get(message.pluginId);
+  const provider = plugin && plugin.handlers.oracleProviders.get(message.providerId);
+  const handler = provider && provider[message.method];
+  if (typeof handler !== "function") {
+    post({ type: "oracleError", requestId: message.requestId, message: "Oracle provider handler is not registered" });
+    return;
+  }
+  try {
+    post({ type: "oracleResult", requestId: message.requestId, result: await handler.call(provider, message.input) });
+  } catch (error) {
+    post({ type: "oracleError", requestId: message.requestId, message: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 async function deactivatePlugin(message) {
   const plugin = plugins.get(message.pluginId);
   if (plugin && plugin.module && typeof plugin.module.deactivate === "function") {
@@ -286,6 +315,11 @@ self.onmessage = (event) => {
     return;
   }
 
+  if (message.type === "invokeOracle") {
+    void invokeOracle(message);
+    return;
+  }
+
   if (message.type === "deactivate") {
     void deactivatePlugin(message);
   }
@@ -305,7 +339,10 @@ function createRuntimeError(message: string) {
 export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
   private readonly plugins = new Map<string, WorkerPluginState>();
 
-  constructor(private readonly pluginRepository?: PluginRepository) {}
+  constructor(
+    private readonly pluginRepository?: PluginRepository,
+    private readonly pluginUi: PluginUiRegistry = pluginUiRegistry,
+  ) {}
 
   async activatePlugin(
     input: ScriptPluginRuntimeActivateInput,
@@ -406,6 +443,8 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     state.worker.terminate();
     this.rejectPending(pluginId, "Script plugin was deactivated");
     this.plugins.delete(pluginId);
+    this.pluginUi.unregisterPlugin(pluginId);
+    unregisterPluginOracleProviders(pluginId);
   }
 
   private async handleWorkerMessage(
@@ -452,10 +491,26 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
 
     if (message.type === "registerOracleProvider") {
       if (!state.permissions.has("oracleProviders:register")) {
-        state.onRuntimeError?.(
-          permissionDenied("oracleProviders:register").message,
-        );
+        this.failPluginMessage(pluginId, permissionDenied("oracleProviders:register"));
+        return;
       }
+      try {
+        const namespacedId = `${pluginId}:${message.provider.id}`;
+        registerOracleProvider({
+          id: namespacedId,
+          name: message.provider.name,
+          description: message.provider.description ?? "",
+          askYesNo: (input) => this.invokeOracleProvider(pluginId, message.provider.id, "askYesNo", input) as Promise<AskOracleResult>,
+          setupScene: (input) => this.invokeOracleProvider(pluginId, message.provider.id, "setupScene", input) as Promise<SceneSetupResult>,
+        }, pluginId);
+      } catch (error) {
+        this.failPluginMessage(pluginId, error);
+      }
+      return;
+    }
+
+    if (message.type === "unregisterOracleProvider") {
+      unregisterOracleProvider(`${pluginId}:${message.providerId}`);
       return;
     }
 
@@ -511,9 +566,62 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       return;
     }
 
-    if (message.type === "notify" || message.type === "setStatus" || message.type === "clearStatus") {
+    if (message.type === "oracleResult") {
+      this.resolvePending(pluginId, message.requestId, { ok: true, value: message.result });
       return;
     }
+
+    if (message.type === "oracleError") {
+      state.onRuntimeError?.(message.message);
+      this.resolvePending(pluginId, message.requestId, { ok: false, error: message.message });
+      return;
+    }
+
+    if (message.type === "notify") {
+      try {
+        this.pluginUi.notify(pluginId, validateNotification(message.payload));
+      } catch (error) {
+        this.failPluginMessage(pluginId, error);
+      }
+      return;
+    }
+
+    if (message.type === "setStatus") {
+      try {
+        this.pluginUi.setStatus(pluginId, validateStatus(message.payload));
+      } catch (error) {
+        this.failPluginMessage(pluginId, error);
+      }
+      return;
+    }
+
+    if (message.type === "clearStatus") {
+      try {
+        this.pluginUi.clearStatus(pluginId, requireMessageString(message.payload, "Plugin status id", 128));
+      } catch (error) {
+        this.failPluginMessage(pluginId, error);
+      }
+      return;
+    }
+  }
+
+  private invokeOracleProvider(
+    pluginId: string,
+    providerId: string,
+    method: "askYesNo" | "setupScene",
+    input: unknown,
+  ): Promise<unknown> {
+    const state = this.plugins.get(pluginId);
+    if (!state) return Promise.reject(new Error(`Script plugin is not active: ${pluginId}`));
+    const requestId = createRequestId(pluginId, `oracle:${method}`);
+    const result = new Promise<unknown>((resolve, reject) => {
+      state.pending.set(requestId, { resolve, reject });
+    });
+    state.worker.postMessage({ type: "invokeOracle", requestId, pluginId, providerId, method, input });
+    return result.then((value) => ({
+      ...validateOracleResult(method, value),
+      providerId: `${pluginId}:${providerId}`,
+    }));
   }
 
   private async handleHostRequest(
@@ -678,6 +786,16 @@ function validateWorkerMessage(value: unknown): WorkerMessage {
         ...(provider.description === undefined ? {} : { description: requireMessageString(provider.description, "Oracle provider description") }),
       } };
     }
+    case "unregisterOracleProvider":
+      assertEnvelopeKeys(message, ["type", "providerId"]);
+      return { type, providerId: requireMessageString(message.providerId, "Oracle provider id", 128) };
+    case "oracleResult":
+      assertEnvelopeKeys(message, ["type", "requestId", "result"]);
+      assertJsonSafe(message.result, "Oracle provider result");
+      return { type, requestId: requestId(), result: message.result };
+    case "oracleError":
+      assertEnvelopeKeys(message, ["type", "requestId", "message"]);
+      return { type, requestId: requestId(), message: errorMessage() };
     case "notify":
     case "setStatus":
     case "clearStatus":
@@ -697,6 +815,67 @@ function validateWorkerMessage(value: unknown): WorkerMessage {
     default:
       throw new Error(`Unknown worker message type: ${type}`);
   }
+}
+
+function validateOracleResult(method: "askYesNo" | "setupScene", value: unknown): AskOracleResult | SceneSetupResult {
+  const result = requireRecord(value, "Oracle provider result");
+  if (method === "askYesNo") {
+    assertEnvelopeKeys(result, ["question", "odds", "roll", "answer", "exceptional", "chaosFactor", "providerId", "providerName", "explanation"]);
+    const odds = ["impossible", "no_way", "very_unlikely", "unlikely", "50_50", "likely", "very_likely", "near_sure", "sure_thing"];
+    if (!odds.includes(result.odds as string)) throw new Error("Invalid oracle odds");
+    if (result.answer !== "Yes" && result.answer !== "No") throw new Error("Invalid oracle answer");
+    if (typeof result.exceptional !== "boolean") throw new Error("Oracle exceptional must be a boolean");
+    return {
+      question: requireMessageString(result.question, "Oracle question"),
+      odds: result.odds as AskOracleResult["odds"],
+      roll: requireFiniteNumber(result.roll, "Oracle roll"),
+      answer: result.answer,
+      exceptional: result.exceptional,
+      chaosFactor: requireFiniteNumber(result.chaosFactor, "Oracle chaos factor"),
+      providerId: requireMessageString(result.providerId, "Oracle result provider id", 128),
+      providerName: requireMessageString(result.providerName, "Oracle result provider name", 128),
+      explanation: requireMessageString(result.explanation, "Oracle explanation"),
+    };
+  }
+  assertEnvelopeKeys(result, ["prompt", "roll", "chaosFactor", "adjustmentType", "providerId", "providerName", "explanation"]);
+  return {
+    prompt: requireMessageString(result.prompt, "Scene prompt"),
+    roll: requireFiniteNumber(result.roll, "Scene roll"),
+    chaosFactor: requireFiniteNumber(result.chaosFactor, "Scene chaos factor"),
+    adjustmentType: requireMessageString(result.adjustmentType, "Scene adjustment type", 128),
+    providerId: requireMessageString(result.providerId, "Scene result provider id", 128),
+    providerName: requireMessageString(result.providerName, "Scene result provider name", 128),
+    explanation: requireMessageString(result.explanation, "Scene explanation"),
+  };
+}
+
+function requireFiniteNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${label} must be a finite number`);
+  return value;
+}
+
+function validateNotification(value: unknown): PluginNotification {
+  const notification = requireRecord(value, "Plugin notification");
+  assertEnvelopeKeys(notification, ["level", "title", "message"]);
+  const levels = ["info", "success", "warning", "error"] as const;
+  if (!levels.includes(notification.level as (typeof levels)[number])) throw new Error("Invalid plugin notification level");
+  return {
+    level: notification.level as PluginNotification["level"],
+    title: requireMessageString(notification.title, "Plugin notification title", 256),
+    ...(notification.message === undefined ? {} : { message: requireMessageString(notification.message, "Plugin notification message") }),
+  };
+}
+
+function validateStatus(value: unknown): PluginStatus {
+  const status = requireRecord(value, "Plugin status");
+  assertEnvelopeKeys(status, ["id", "level", "message"]);
+  const levels = ["idle", "working", "success", "warning", "error"] as const;
+  if (!levels.includes(status.level as (typeof levels)[number])) throw new Error("Invalid plugin status level");
+  return {
+    id: requireMessageString(status.id, "Plugin status id", 128),
+    level: status.level as PluginStatus["level"],
+    message: requireMessageString(status.message, "Plugin status message"),
+  };
 }
 
 function assertEnvelopeKeys(value: Record<string, unknown>, allowed: readonly string[]): void {

@@ -62,7 +62,7 @@ describe("command result blocks", () => {
     expect(payload.reason).toBe("Missing dice formula");
   });
 
-  it("creates an oracle result block from a parsed /ask command", () => {
+  it("creates an oracle result block from a parsed /ask command", async () => {
     const command: ParsedAskCommand = {
       type: "ask",
       raw: "/ask likely Is the guard asleep?",
@@ -70,7 +70,7 @@ describe("command result blocks", () => {
       question: "Is the guard asleep?",
     };
 
-    const block = createAskCommandResultBlock(command, 7);
+    const block = await createAskCommandResultBlock(command, 7);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("oracle");

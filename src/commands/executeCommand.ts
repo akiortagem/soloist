@@ -105,10 +105,10 @@ function createCombatTurnPayload(input: {
   };
 }
 
-function createCommandResultBlock(
+async function createCommandResultBlock(
   command: ParsedCommand,
   context: CommandExecutionContext,
-): ResultBlock {
+): Promise<ResultBlock> {
   switch (command.type) {
     case "ask":
       return createAskCommandResultBlock(command, context.chaosFactor);
@@ -442,5 +442,5 @@ export async function executeCommand(
     return executeScriptPluginCommand(command, context);
   }
 
-  return resultBlockAction(createCommandResultBlock(command, context));
+  return resultBlockAction(await createCommandResultBlock(command, context));
 }

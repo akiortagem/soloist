@@ -3,24 +3,24 @@ import type { SceneContainerPayload } from "../domain/domainTypes";
 import { confirmSceneDescription } from "../scene/sceneContainerLogic";
 
 describe("scene container lifecycle", () => {
-  it("keeps an empty scene description editable", () => {
+  it("keeps an empty scene description editable", async () => {
     const payload: SceneContainerPayload = {
       id: "scene_empty",
       description: "",
       descriptionLocked: false,
     };
 
-    expect(confirmSceneDescription(payload, 5)).toBe(payload);
+    expect(await confirmSceneDescription(payload, 5)).toBe(payload);
   });
 
-  it("locks the scene description and rolls scene setup", () => {
+  it("locks the scene description and rolls scene setup", async () => {
     const payload: SceneContainerPayload = {
       id: "scene_confirm",
       description: " I enter the adventurer guild to see the notice board ",
       descriptionLocked: false,
     };
 
-    const confirmed = confirmSceneDescription(payload, 5);
+    const confirmed = await confirmSceneDescription(payload, 5);
 
     expect(confirmed.description).toBe(
       "I enter the adventurer guild to see the notice board",
@@ -34,7 +34,7 @@ describe("scene container lifecycle", () => {
     expect(confirmed.oracleError).toBeUndefined();
   });
 
-  it("does not roll again after the description is locked", () => {
+  it("does not roll again after the description is locked", async () => {
     const payload: SceneContainerPayload = {
       id: "scene_locked",
       description: "Already confirmed",
@@ -49,17 +49,17 @@ describe("scene container lifecycle", () => {
       },
     };
 
-    expect(confirmSceneDescription(payload, 5)).toBe(payload);
+    expect(await confirmSceneDescription(payload, 5)).toBe(payload);
   });
 
-  it("locks the description and records an error without a chaos factor", () => {
+  it("locks the description and records an error without a chaos factor", async () => {
     const payload: SceneContainerPayload = {
       id: "scene_error",
       description: "Open on a stormy road",
       descriptionLocked: false,
     };
 
-    const confirmed = confirmSceneDescription(payload, null);
+    const confirmed = await confirmSceneDescription(payload, null);
 
     expect(confirmed.descriptionLocked).toBe(true);
     expect(confirmed.oracleResult).toBeUndefined();

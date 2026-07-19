@@ -5,6 +5,8 @@ import {
   reinstallPluginCharacterSheetTemplate,
 } from "../../plugins/characterSheetTemplateImporter";
 import { PluginManager } from "../../plugins/pluginManager";
+import { pluginUiRegistry } from "../../plugins/pluginUiRegistry";
+import { unregisterPluginOracleProviders } from "../../oracle/oracleRegistry";
 import {
   type PluginManifest,
   validatePluginManifest,
@@ -194,6 +196,8 @@ export const pluginActions = {
       }
 
       await repositories.plugins.uninstall(pluginId);
+      pluginUiRegistry.unregisterPlugin(pluginId);
+      unregisterPluginOracleProviders(pluginId);
 
       try {
         await invoke("uninstall_plugin_folder", { pluginId });

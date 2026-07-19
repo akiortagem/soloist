@@ -16,7 +16,7 @@ in the installed plugin package. Soloist will not load TypeScript source files
 from installed plugins.
 
 The public SDK is intentionally narrow. It exposes slash command registration,
-oracle provider registration, plugin-local storage, notifications, status
+plugin-local storage, notifications, status
 updates, and safe command context values such as command arguments, chaos
 factor, plugin id, and a selected-text placeholder for future document-aware
 commands. It does not expose app internals such as the app store, repositories,
@@ -83,6 +83,21 @@ validated at runtime. Command identifiers and UI strings are bounded, command
 prefixes must match `/command` or `/command `, and IDs/names must be unique per
 plugin. JSON payloads must contain only finite numbers, strings, booleans,
 null, arrays, and plain objects, with bounded nesting and size.
+
+### Script API v1
+
+`SoloistPluginApi` exposes `pluginId`, plugin-local `storage`,
+`registerSlashCommand`, `registerOracleProvider`, `notify`, `setStatus`, and
+`clearStatus`. Notifications
+appear in the application activity overlay. Status IDs are local to a plugin;
+the host namespaces them as `pluginId:statusId`, and repeated `setStatus` calls
+update the same status. `clearStatus` removes it. Plugin statuses are removed
+when the plugin is disabled, reloaded, fails, or is uninstalled.
+
+Oracle providers run in the plugin Worker and may implement synchronous or
+asynchronous `askYesNo` and `setupScene` handlers. The host namespaces provider
+IDs as `pluginId:providerId`. Disposing the returned registration unregisters
+the provider, and all providers are removed when their plugin stops.
 
 Supported script permissions are `storage`, `slashCommands:register`,
 `oracleProviders:register`, `document:readSelection`, and

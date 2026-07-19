@@ -1,10 +1,3 @@
-import type {
-  AskOracleInput,
-  AskOracleResult,
-  SceneSetupInput,
-  SceneSetupResult,
-} from "../oracle/oracleTypes";
-
 export type PluginJsonValue =
   | string
   | number
@@ -99,9 +92,7 @@ export type PluginOracleProvider = {
   name: string;
   description?: string;
   askYesNo(input: AskOracleInput): AskOracleResult | Promise<AskOracleResult>;
-  setupScene(
-    input: SceneSetupInput,
-  ): SceneSetupResult | Promise<SceneSetupResult>;
+  setupScene(input: SceneSetupInput): SceneSetupResult | Promise<SceneSetupResult>;
 };
 
 export type SoloistPluginApi = {
@@ -118,3 +109,9 @@ export type SoloistPluginModule = {
   activate(api: SoloistPluginApi): void | Promise<void>;
   deactivate?(): void | Promise<void>;
 };
+import type {
+  AskOracleInput,
+  AskOracleResult,
+  SceneSetupInput,
+  SceneSetupResult,
+} from "../oracle/oracleTypes";

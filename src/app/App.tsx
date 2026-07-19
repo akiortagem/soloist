@@ -16,6 +16,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
+import { PluginFeedback } from "./PluginFeedback";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
 import type { Document } from "../domain/domainTypes";
 import { CombatPanel } from "../combat/CombatPanel";
@@ -441,6 +442,7 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <PluginFeedback />
       <div
         className={`workspace${isRightPanelOpen ? " tools-open" : ""}${
           isResizingRightPanel ? " is-resizing-right-panel" : ""

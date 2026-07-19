@@ -1,10 +1,10 @@
 import type { SceneContainerPayload } from "../domain/domainTypes";
 import { setupScene } from "./setupScene";
 
-export function confirmSceneDescription(
+export async function confirmSceneDescription(
   payload: SceneContainerPayload,
   chaosFactor: number | null | undefined,
-): SceneContainerPayload {
+): Promise<SceneContainerPayload> {
   const description = payload.description.trim();
 
   if (description.length === 0 || payload.descriptionLocked) {
@@ -22,7 +22,7 @@ export function confirmSceneDescription(
   }
 
   try {
-    const result = setupScene(description, chaosFactor);
+    const result = await setupScene(description, chaosFactor);
 
     return {
       ...payload,

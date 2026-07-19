@@ -6,6 +6,35 @@
   height: 100vh;
 }
 
+.plugin-feedback {
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  z-index: 1000;
+  display: grid;
+  gap: 0.5rem;
+  width: min(24rem, calc(100vw - 2rem));
+}
+
+.plugin-feedback-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-color, #444);
+  border-left: 4px solid #6b7280;
+  border-radius: 0.4rem;
+  background: var(--panel-background, #202124);
+  box-shadow: 0 0.4rem 1rem rgb(0 0 0 / 25%);
+}
+
+.plugin-feedback-item.success { border-left-color: #22c55e; }
+.plugin-feedback-item.warning { border-left-color: #f59e0b; }
+.plugin-feedback-item.error { border-left-color: #ef4444; }
+.plugin-feedback-item.working { border-left-color: #3b82f6; }
+.plugin-feedback-item span { flex: 1; }
+.plugin-feedback-item button { margin-left: auto; }
+
 .workspace {
   display: grid;
   grid-template-columns: var(--left-panel-width) 8px minmax(420px, 1fr);

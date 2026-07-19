@@ -1,6 +1,10 @@
 # Soloist Plugin Examples
 
-Soloist plugins are installed data manifests. They can contribute safe, declarative content such as random tables, slash commands, and character sheet templates without running external JavaScript.
+Soloist plugins can be data manifests or compiled-JavaScript script plugins.
+Data plugins contribute safe, declarative content without running JavaScript.
+Script plugins run in a Worker and can register slash commands and asynchronous
+oracle providers, use plugin-local storage, and show notifications or statuses.
+See [the complete plugin format and API v1 contract](./PLUGIN_FORMAT.md).
 
 ## Manifest shape
 
@@ -29,4 +33,3 @@ See [`omen/manifest.json`](./omen/manifest.json) for a complete `/omen` example.
 `Simple Character`. When imported, Soloist creates a local template copy with a
 two-column row layout: HP and MP in a Resources group, and ATK and DEF in a
 Combat group.
-
