@@ -65,6 +65,25 @@ Optional fields:
 
 Unknown manifest fields are rejected.
 
+### API compatibility policy
+
+Soloist currently supports exactly plugin API version `"1"`. A manifest that
+declares any other value is rejected before the plugin is activated, with an
+error that identifies the unsupported version and the supported version.
+
+Backward-compatible additions may be made within API version 1. Existing
+fields and behavior will continue to work for the lifetime of that major API
+version. A change that removes, renames, or incompatibly changes a public
+manifest field, worker message, permission, or SDK contract requires a new API
+major version. Plugins must opt in by changing `soloistApiVersion`; Soloist does
+not guess compatibility or silently load plugins built for a newer major.
+
+Worker messages, command registrations, command results, and JSON payloads are
+validated at runtime. Command identifiers and UI strings are bounded, command
+prefixes must match `/command` or `/command `, and IDs/names must be unique per
+plugin. JSON payloads must contain only finite numbers, strings, booleans,
+null, arrays, and plain objects, with bounded nesting and size.
+
 Supported script permissions are `storage`, `slashCommands:register`,
 `oracleProviders:register`, `document:readSelection`, and
 `document:insertBlock`. Data plugins do not need a `permissions` field.

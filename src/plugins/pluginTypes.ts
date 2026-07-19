@@ -2,8 +2,14 @@ import type {
   CharacterFieldValue,
   CharacterTemplateItem,
 } from "../domain/domainTypes";
+import { validateSlashCommandRegistration } from "./pluginValidation";
 
 export type PluginType = "data" | "script";
+
+// API major 1 is the only currently supported plugin contract. Additive,
+// backward-compatible changes stay on 1; breaking changes require a new major.
+export const SUPPORTED_SOLOIST_API_VERSIONS = ["1"] as const;
+export const CURRENT_SOLOIST_API_VERSION = "1";
 
 export const SCRIPT_PLUGIN_PERMISSIONS = [
   "storage",
@@ -73,7 +79,8 @@ export type PluginManifestValidationErrorCode =
   | "EMPTY_STRING"
   | "INVALID_ARRAY"
   | "INVALID_NUMBER"
-  | "INVALID_FIELD_VALUE";
+  | "INVALID_FIELD_VALUE"
+  | "UNSUPPORTED_API_VERSION";
 
 export type PluginManifestValidationError = {
   path: string;
@@ -185,6 +192,20 @@ function validateManifest(
   requireString(value, "name", path, context);
   requireString(value, "version", path, context);
   requireString(value, "soloistApiVersion", path, context);
+  if (
+    typeof value.soloistApiVersion === "string" &&
+    value.soloistApiVersion.trim().length > 0 &&
+    !(SUPPORTED_SOLOIST_API_VERSIONS as readonly string[]).includes(
+      value.soloistApiVersion,
+    )
+  ) {
+    addError(
+      context,
+      `${path}.soloistApiVersion`,
+      "UNSUPPORTED_API_VERSION",
+      `Unsupported Soloist API version "${value.soloistApiVersion}"; supported version: ${CURRENT_SOLOIST_API_VERSION}`,
+    );
+  }
 
   if (!hasOwn(value, "type")) {
     addMissingField(context, path, "type");
@@ -255,6 +276,22 @@ function validateContributions(
     context,
     validateSlashCommandContribution,
   );
+  if (Array.isArray(value.slashCommands)) {
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    value.slashCommands.forEach((item, index) => {
+      if (!isRecord(item)) return;
+      if (typeof item.id === "string") {
+        if (ids.has(item.id)) addError(context, `${path}.slashCommands[${index}].id`, "INVALID_FIELD_VALUE", `Duplicate slash command id: ${item.id}`);
+        ids.add(item.id);
+      }
+      if (typeof item.name === "string") {
+        const name = item.name.toLowerCase();
+        if (names.has(name)) addError(context, `${path}.slashCommands[${index}].name`, "INVALID_FIELD_VALUE", `Duplicate slash command name: ${item.name}`);
+        names.add(name);
+      }
+    });
+  }
   validateOptionalArray(
     value,
     "randomTables",
@@ -296,6 +333,18 @@ function validateSlashCommandContribution(
   optionalString(value, "description", path, context);
   optionalString(value, "commandText", path, context);
   optionalString(value, "tableId", path, context);
+
+  try {
+    validateSlashCommandRegistration({
+      id: value.id,
+      name: value.name,
+      label: value.label,
+      prefix: value.prefix,
+      ...(value.description === undefined ? {} : { description: value.description }),
+    });
+  } catch (error) {
+    addError(context, path, "INVALID_FIELD_VALUE", error instanceof Error ? error.message : String(error));
+  }
 
   if (!hasOwn(value, "commandText") && !hasOwn(value, "tableId")) {
     addError(

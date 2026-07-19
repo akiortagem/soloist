@@ -1,10 +1,16 @@
 import type {
   PluginCommandContext,
   PluginCommandExecutionResult,
-  PluginJsonValue,
 } from "./pluginApi";
 import type { PluginRepository } from "../persistence/pluginRepository";
 import type { ScriptPluginPermission } from "./pluginTypes";
+import {
+  assertJsonSafe,
+  requireMessageString,
+  requireRecord,
+  validatePluginCommandExecutionResult,
+  validateSlashCommandRegistration,
+} from "./pluginValidation";
 
 export type ScriptPluginSlashCommandRegistration = {
   id: string;
@@ -40,6 +46,7 @@ export type ScriptPluginRuntime = {
 };
 
 type WorkerPluginState = {
+  pluginId: string;
   worker: Worker;
   slashCommands: ScriptPluginSlashCommandRegistration[];
   pending: Map<
@@ -143,10 +150,10 @@ function createApi(pluginId, handlers, permissions) {
         throw new Error("registerSlashCommand requires a command handler");
       }
       const safeCommand = {
-        id: String(command.id || ""),
-        name: String(command.name || ""),
-        label: String(command.label || ""),
-        prefix: String(command.prefix || ""),
+        id: command.id,
+        name: command.name,
+        label: command.label,
+        prefix: command.prefix,
         description:
           typeof command.description === "string" ? command.description : undefined,
       };
@@ -163,8 +170,8 @@ function createApi(pluginId, handlers, permissions) {
       post({
         type: "registerOracleProvider",
         provider: {
-          id: String(provider && provider.id || ""),
-          name: String(provider && provider.name || ""),
+          id: provider && provider.id,
+          name: provider && provider.name,
           description:
             provider && typeof provider.description === "string"
               ? provider.description
@@ -315,6 +322,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       ),
     );
     const state: WorkerPluginState = {
+      pluginId: input.pluginId,
       worker,
       slashCommands: [],
       pending: new Map(),
@@ -323,7 +331,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     };
     this.plugins.set(input.pluginId, state);
 
-    worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
+    worker.onmessage = (event: MessageEvent<unknown>) => {
       void this.handleWorkerMessage(input.pluginId, event.data);
     };
     worker.onerror = (event) => {
@@ -402,11 +410,19 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
 
   private async handleWorkerMessage(
     pluginId: string,
-    message: WorkerMessage,
+    rawMessage: unknown,
   ): Promise<void> {
     const state = this.plugins.get(pluginId);
 
     if (!state) {
+      return;
+    }
+
+    let message: WorkerMessage;
+    try {
+      message = validateWorkerMessage(rawMessage);
+    } catch (error) {
+      this.failPluginMessage(pluginId, error);
       return;
     }
 
@@ -417,7 +433,20 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
         );
         return;
       }
-      state.slashCommands.push(message.command);
+      let command: ScriptPluginSlashCommandRegistration;
+      try {
+        command = validateSlashCommandRegistration(message.command);
+        if (state.slashCommands.some((item) => item.id === command.id)) {
+          throw new Error(`Duplicate slash command id: ${command.id}`);
+        }
+        if (state.slashCommands.some((item) => item.name.toLowerCase() === command.name.toLowerCase())) {
+          throw new Error(`Duplicate slash command name: ${command.name}`);
+        }
+      } catch (error) {
+        this.failPluginMessage(pluginId, error);
+        return;
+      }
+      state.slashCommands.push(command);
       return;
     }
 
@@ -456,8 +485,15 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
 
     if (message.type === "commandResult") {
+      let result: PluginCommandExecutionResult;
+      try {
+        result = validatePluginCommandExecutionResult(message.result);
+      } catch (error) {
+        this.failPluginMessage(pluginId, error, message.requestId);
+        return;
+      }
       if (
-        isInsertResultBlock(message.result) &&
+        result.type === "insertResultBlock" &&
         !state.permissions.has("document:insertBlock")
       ) {
         const error = permissionDenied("document:insertBlock");
@@ -470,8 +506,13 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       }
       this.resolvePending(pluginId, message.requestId, {
         ok: true,
-        value: message.result,
+        value: result,
       });
+      return;
+    }
+
+    if (message.type === "notify" || message.type === "setStatus" || message.type === "clearStatus") {
+      return;
     }
   }
 
@@ -480,6 +521,9 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     message: Extract<WorkerMessage, { type: "hostRequest" }>,
   ): Promise<void> {
     try {
+      if (message.payload.pluginId !== state.pluginId) {
+        throw new Error("Host request pluginId does not match the active plugin");
+      }
       if (message.action.startsWith("storage.")) {
         this.requirePermission(state, "storage");
       }
@@ -519,8 +563,8 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       throw new Error("Plugin storage is unavailable");
     }
 
-    const pluginId = String(payload.pluginId ?? "");
-    const key = String(payload.key ?? "");
+    const pluginId = typeof payload.pluginId === "string" ? payload.pluginId : "";
+    const key = typeof payload.key === "string" ? payload.key : "";
 
     if (!pluginId) {
       throw new Error("Plugin id is required");
@@ -532,9 +576,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
 
     if (action === "storage.set") {
       const value = payload.value;
-      if (!isJsonSafe(value)) {
-        throw new Error("Plugin storage value must be JSON-safe");
-      }
+      assertJsonSafe(value, "Plugin storage value");
       await this.pluginRepository.setStorage(pluginId, key, value);
       return undefined;
     }
@@ -589,38 +631,75 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
     state.pending.clear();
   }
+
+  private failPluginMessage(pluginId: string, error: unknown, requestId?: string): void {
+    const message = `Invalid worker message: ${error instanceof Error ? error.message : String(error)}`;
+    const state = this.plugins.get(pluginId);
+    state?.onRuntimeError?.(message);
+    if (requestId) {
+      this.resolvePending(pluginId, requestId, { ok: false, error: message });
+    } else {
+      this.rejectPending(pluginId, message);
+    }
+  }
 }
 
 function permissionDenied(permission: ScriptPluginPermission): Error {
   return new Error(`Plugin permission denied: ${permission}`);
 }
 
-function isInsertResultBlock(value: unknown): boolean {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      "type" in value &&
-      value.type === "insertResultBlock",
-  );
+function validateWorkerMessage(value: unknown): WorkerMessage {
+  const message = requireRecord(value, "Worker message");
+  const type = requireMessageString(message.type, "Worker message type", 64);
+  const requestId = () => requireMessageString(message.requestId, "Worker requestId", 256);
+  const errorMessage = () => requireMessageString(message.message, "Worker error message");
+  switch (type) {
+    case "activated":
+      assertEnvelopeKeys(message, ["type", "requestId"]);
+      return { type, requestId: requestId() };
+    case "activationError":
+    case "commandError":
+    case "runtimeError":
+      assertEnvelopeKeys(message, ["type", "requestId", "message"]);
+      return { type, ...(message.requestId === undefined ? {} : { requestId: requestId() }), message: errorMessage() };
+    case "commandResult":
+      assertEnvelopeKeys(message, ["type", "requestId", "result"]);
+      return { type, requestId: requestId(), result: message.result };
+    case "registerSlashCommand":
+      assertEnvelopeKeys(message, ["type", "command"]);
+      return { type, command: message.command as ScriptPluginSlashCommandRegistration };
+    case "registerOracleProvider": {
+      assertEnvelopeKeys(message, ["type", "provider"]);
+      const provider = requireRecord(message.provider, "Oracle provider registration");
+      assertEnvelopeKeys(provider, ["id", "name", "description"]);
+      return { type, provider: {
+        id: requireMessageString(provider.id, "Oracle provider id", 128),
+        name: requireMessageString(provider.name, "Oracle provider name", 128),
+        ...(provider.description === undefined ? {} : { description: requireMessageString(provider.description, "Oracle provider description") }),
+      } };
+    }
+    case "notify":
+    case "setStatus":
+    case "clearStatus":
+      assertEnvelopeKeys(message, ["type", "payload"]);
+      assertJsonSafe(message.payload, `Worker ${type} payload`);
+      return { type, payload: message.payload };
+    case "hostRequest": {
+      assertEnvelopeKeys(message, ["type", "requestId", "action", "payload"]);
+      const action = requireMessageString(message.action, "Host request action", 64);
+      if (!["storage.get", "storage.set", "storage.remove", "storage.keys", "storage.clear"].includes(action)) {
+        throw new Error(`Unknown host request action: ${action}`);
+      }
+      const payload = requireRecord(message.payload, "Host request payload");
+      assertJsonSafe(payload, "Host request payload");
+      return { type, requestId: requestId(), action, payload };
+    }
+    default:
+      throw new Error(`Unknown worker message type: ${type}`);
+  }
 }
 
-function isJsonSafe(value: unknown): value is PluginJsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
-    return true;
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonSafe);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.values(value).every(isJsonSafe);
-  }
-
-  return false;
+function assertEnvelopeKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
+  const unknown = Object.keys(value).find((key) => !allowed.includes(key));
+  if (unknown) throw new Error(`Unknown worker message field: ${unknown}`);
 }

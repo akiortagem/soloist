@@ -25,6 +25,7 @@ import {
   type ScriptPluginRuntime,
   WorkerScriptPluginRuntime,
 } from "./scriptPluginRuntime";
+import { validateSlashCommandRegistration } from "./pluginValidation";
 
 export type PluginManagerStatusKind =
   | "loaded"
@@ -159,6 +160,7 @@ export class PluginManager {
       this.loadedPluginIds.add(plugin.id);
       return this.createStatus(plugin, "loaded", [], counts);
     } catch (error) {
+      this.scriptRuntime.deactivatePlugin(plugin.id);
       this.registries.slashCommands.unregisterPlugin(plugin.id);
       this.registries.oracleTables.unregisterPlugin(plugin.id);
       this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
@@ -257,7 +259,19 @@ export class PluginManager {
       onRuntimeError: (message) => this.setRuntimeErrorStatus(plugin, message),
     });
 
-    for (const command of activation.slashCommands) {
+    const commandIds = new Set<string>();
+    const commandNames = new Set<string>();
+    for (const rawCommand of activation.slashCommands as unknown[]) {
+      const command = validateSlashCommandRegistration(rawCommand);
+      if (commandIds.has(command.id)) {
+        throw new Error(`Duplicate slash command id: ${command.id}`);
+      }
+      const normalizedName = command.name.toLowerCase();
+      if (commandNames.has(normalizedName)) {
+        throw new Error(`Duplicate slash command name: ${command.name}`);
+      }
+      commandIds.add(command.id);
+      commandNames.add(normalizedName);
       this.registries.slashCommands.register({
         id: createContributionId(plugin.id, command.id),
         name: command.name,
@@ -294,6 +308,12 @@ export class PluginManager {
       code: "INVALID_FIELD_VALUE",
       message,
     };
+
+    this.registries.slashCommands.unregisterPlugin(plugin.id);
+    this.registries.oracleTables.unregisterPlugin(plugin.id);
+    this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
+    this.scriptRuntime.deactivatePlugin(plugin.id);
+    this.loadedPluginIds.delete(plugin.id);
 
     this.statuses.set(
       plugin.id,

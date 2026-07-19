@@ -162,6 +162,24 @@ describe("plugin manifest validation", () => {
     });
   });
 
+  it("rejects an unsupported Soloist API version with an actionable error", () => {
+    const result = validatePluginManifest({
+      ...validManifest,
+      soloistApiVersion: "2",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        {
+          path: "$.soloistApiVersion",
+          code: "UNSUPPORTED_API_VERSION",
+          message: 'Unsupported Soloist API version "2"; supported version: 1',
+        },
+      ],
+    });
+  });
+
   it("accepts a script plugin manifest with a compiled JavaScript entry", () => {
     const result = validatePluginManifest({
       id: "soloist-plugin.script-example",
