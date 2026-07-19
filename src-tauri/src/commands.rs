@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::{
+    collections::HashSet,
     ffi::OsStr,
     fs::{self, File},
     io,
@@ -11,6 +12,13 @@ use zip::ZipArchive;
 
 const PLUGIN_DIR_NAME: &str = "plugins";
 const PLUGIN_MANIFEST_FILE: &str = "plugin.json";
+const MAX_ARCHIVE_SIZE: u64 = 64 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES: usize = 1_024;
+const MAX_ENTRY_SIZE: u64 = 16 * 1024 * 1024;
+const MAX_TOTAL_SIZE: u64 = 64 * 1024 * 1024;
+const MAX_PATH_LENGTH: usize = 240;
+const MAX_PATH_DEPTH: usize = 16;
+const MAX_COMPRESSION_RATIO: u64 = 200;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,12 +74,20 @@ fn install_plugin_package_into(
         return Err("Choose a .soloist-plugin package.".to_string());
     }
 
+    let package_size = fs::metadata(package_path)
+        .map_err(|error| format!("Plugin package metadata could not be read: {error}"))?
+        .len();
+    if package_size > MAX_ARCHIVE_SIZE {
+        return Err(format!(
+            "Plugin package is too large (maximum {} MiB).",
+            MAX_ARCHIVE_SIZE / 1024 / 1024
+        ));
+    }
     let package_file = File::open(package_path)
         .map_err(|error| format!("Plugin package could not be opened: {error}"))?;
     let mut archive = ZipArchive::new(package_file)
         .map_err(|_| "Plugin package is not a readable zip archive.".to_string())?;
 
-    let manifest_text = read_root_manifest_from_archive(&mut archive)?;
     let archive_paths = safe_archive_paths(&mut archive)?;
     let folder_name = plugin_folder_name_from_package_path(package_path)?;
     let target_dir = plugin_dir.join(&folder_name);
@@ -79,19 +95,19 @@ fn install_plugin_package_into(
     fs::create_dir_all(plugin_dir)
         .map_err(|error| format!("Plugin directory could not be created: {error}"))?;
 
-    if target_dir.exists() {
-        fs::remove_dir_all(&target_dir)
-            .map_err(|error| format!("Existing plugin folder could not be replaced: {error}"))?;
-    }
-
-    fs::create_dir_all(&target_dir)
-        .map_err(|error| format!("Plugin folder could not be created: {error}"))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".install-")
+        .tempdir_in(plugin_dir)
+        .map_err(|error| format!("Temporary plugin folder could not be created: {error}"))?;
+    let staged_dir = staging.path().join("plugin");
+    fs::create_dir(&staged_dir)
+        .map_err(|error| format!("Temporary plugin folder could not be created: {error}"))?;
 
     for (index, relative_path) in archive_paths.into_iter().enumerate() {
         let mut entry = archive
             .by_index(index)
             .map_err(|error| format!("Plugin package entry could not be read: {error}"))?;
-        let output_path = target_dir.join(relative_path);
+        let output_path = staged_dir.join(relative_path);
 
         if entry.is_dir() {
             fs::create_dir_all(&output_path)
@@ -106,15 +122,163 @@ fn install_plugin_package_into(
 
         let mut output = File::create(&output_path)
             .map_err(|error| format!("Plugin package file could not be created: {error}"))?;
-        io::copy(&mut entry, &mut output)
+        let expected_size = entry.size();
+        let written = io::copy(&mut entry, &mut output)
             .map_err(|error| format!("Plugin package file could not be written: {error}"))?;
+        if written != expected_size {
+            return Err(format!(
+                "Plugin package entry size changed during extraction: {}",
+                output_path.display()
+            ));
+        }
     }
+
+    let manifest_text = fs::read_to_string(staged_dir.join(PLUGIN_MANIFEST_FILE))
+        .map_err(|error| format!("Plugin manifest could not be read after extraction: {error}"))?;
+    let plugin_id = validate_staged_plugin(&staged_dir, &manifest_text)?;
+    validate_install_conflicts(plugin_dir, &target_dir, &plugin_id)?;
+
+    replace_plugin_dir(&staged_dir, &target_dir, |from, to| fs::rename(from, to))?;
 
     Ok(PluginPackageInstallResult {
         folder_name,
         installed_path: target_dir.to_string_lossy().into_owned(),
         manifest_text,
     })
+}
+
+fn validate_staged_plugin(staged_dir: &Path, manifest_text: &str) -> Result<String, String> {
+    let manifest: serde_json::Value = serde_json::from_str(manifest_text)
+        .map_err(|error| format!("Plugin manifest is not valid JSON: {error}"))?;
+    let object = manifest
+        .as_object()
+        .ok_or_else(|| "Plugin manifest must be a JSON object.".to_string())?;
+    let id = object
+        .get("id")
+        .and_then(|value| value.as_str())
+        .filter(|id| !id.trim().is_empty())
+        .ok_or_else(|| "Plugin manifest must contain a non-empty string id.".to_string())?;
+    let plugin_type = object
+        .get("type")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "Plugin manifest must contain a string type.".to_string())?;
+    match plugin_type {
+        "data" => {}
+        "script" => {
+            let entry = object
+                .get("entry")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| "Script plugin manifest must contain an entry path.".to_string())?;
+            let entry_path = safe_archive_path(entry)
+                .ok_or_else(|| "Script plugin entry path is unsafe.".to_string())?;
+            if !staged_dir.join(entry_path).is_file() {
+                return Err(format!(
+                    "Script plugin entry was not found in the package: {entry}"
+                ));
+            }
+        }
+        other => return Err(format!("Plugin manifest type is unsupported: {other}")),
+    }
+    Ok(id.to_string())
+}
+
+fn validate_install_conflicts(
+    plugin_dir: &Path,
+    target_dir: &Path,
+    plugin_id: &str,
+) -> Result<(), String> {
+    for entry in fs::read_dir(plugin_dir)
+        .map_err(|error| format!("Plugin directory could not be read: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("Plugin folder could not be read: {error}"))?;
+        if !entry
+            .file_type()
+            .map_err(|error| format!("Plugin folder metadata could not be read: {error}"))?
+            .is_dir()
+            || entry
+                .path()
+                .file_name()
+                .and_then(OsStr::to_str)
+                .is_some_and(|name| name.starts_with(".install-") || name.starts_with(".backup-"))
+        {
+            continue;
+        }
+        let manifest_path = entry.path().join(PLUGIN_MANIFEST_FILE);
+        if entry.path() == target_dir {
+            if !manifest_path.is_file() {
+                return Err(format!(
+                    "Plugin folder conflict: {} already exists and is not an installed plugin.",
+                    entry.file_name().to_string_lossy()
+                ));
+            }
+            let existing = fs::read_to_string(&manifest_path)
+                .map_err(|error| format!("Existing plugin manifest could not be read: {error}"))?;
+            let existing_id = serde_json::from_str::<serde_json::Value>(&existing)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_owned)
+                });
+            if existing_id.as_deref() != Some(plugin_id) {
+                return Err(format!(
+                    "Plugin folder conflict: {} belongs to a different plugin.",
+                    entry.file_name().to_string_lossy()
+                ));
+            }
+        } else if manifest_path.is_file() {
+            let existing = fs::read_to_string(&manifest_path)
+                .map_err(|error| format!("Existing plugin manifest could not be read: {error}"))?;
+            if serde_json::from_str::<serde_json::Value>(&existing)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("id")
+                        .and_then(|id| id.as_str())
+                        .map(str::to_owned)
+                })
+                .as_deref()
+                == Some(plugin_id)
+            {
+                return Err(format!(
+                    "Plugin id conflict: {plugin_id} is already installed in {}.",
+                    entry.file_name().to_string_lossy()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn replace_plugin_dir<F>(staged_dir: &Path, target_dir: &Path, mut rename: F) -> Result<(), String>
+where
+    F: FnMut(&Path, &Path) -> io::Result<()>,
+{
+    if !target_dir.exists() {
+        return rename(staged_dir, target_dir)
+            .map_err(|error| format!("Plugin could not be installed: {error}"));
+    }
+    let parent = target_dir
+        .parent()
+        .ok_or_else(|| "Plugin target directory is invalid.".to_string())?;
+    let backup = tempfile::Builder::new()
+        .prefix(".backup-")
+        .tempdir_in(parent)
+        .map_err(|error| format!("Plugin backup folder could not be created: {error}"))?;
+    let backup_path = backup.path().join("plugin");
+    rename(target_dir, &backup_path)
+        .map_err(|error| format!("Existing plugin could not be backed up: {error}"))?;
+    if let Err(error) = rename(staged_dir, target_dir) {
+        if let Err(rollback_error) = rename(&backup_path, target_dir) {
+            let backup_location = backup.keep();
+            return Err(format!("Plugin replacement failed ({error}) and rollback failed ({rollback_error}). Backup remains at {}.", backup_location.display()));
+        }
+        return Err(format!(
+            "Plugin replacement failed and the previous installation was restored: {error}"
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -316,31 +480,79 @@ fn app_plugin_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir.join(PLUGIN_DIR_NAME))
 }
 
-fn read_root_manifest_from_archive(archive: &mut ZipArchive<File>) -> Result<String, String> {
-    let mut manifest = archive
-        .by_name(PLUGIN_MANIFEST_FILE)
-        .map_err(|_| "Plugin package must contain plugin.json at the package root.".to_string())?;
-    let mut manifest_bytes = Vec::new();
-    io::copy(&mut manifest, &mut manifest_bytes)
-        .map_err(|error| format!("Plugin manifest could not be read: {error}"))?;
-    String::from_utf8(manifest_bytes)
-        .map_err(|_| "Plugin manifest must be UTF-8 encoded.".to_string())
-}
-
 fn safe_archive_paths(archive: &mut ZipArchive<File>) -> Result<Vec<PathBuf>, String> {
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(format!(
+            "Plugin package has too many entries (maximum {MAX_ARCHIVE_ENTRIES})."
+        ));
+    }
     let mut paths = Vec::with_capacity(archive.len());
+    let mut seen = HashSet::new();
+    let mut total_size = 0u64;
+    let mut has_root_manifest = false;
 
     for index in 0..archive.len() {
         let entry = archive
             .by_index(index)
             .map_err(|error| format!("Plugin package entry could not be read: {error}"))?;
         let entry_name = entry.name().to_string();
+        if entry_name.as_bytes().len() > MAX_PATH_LENGTH {
+            return Err(format!("Plugin package path is too long: {entry_name}"));
+        }
         let Some(relative_path) = safe_archive_path(&entry_name) else {
             return Err(format!(
                 "Plugin package contains an unsafe path: {entry_name}"
             ));
         };
+        if relative_path.components().count() > MAX_PATH_DEPTH {
+            return Err(format!("Plugin package path is too deep: {entry_name}"));
+        }
+        if !seen.insert(relative_path.clone()) {
+            return Err(format!(
+                "Plugin package contains a duplicate path: {entry_name}"
+            ));
+        }
+        if relative_path == Path::new(PLUGIN_MANIFEST_FILE) {
+            has_root_manifest = true;
+        }
+        let mode_type =
+            entry
+                .unix_mode()
+                .unwrap_or(if entry.is_dir() { 0o040000 } else { 0o100000 })
+                & 0o170000;
+        if mode_type != 0o040000 && mode_type != 0o100000 {
+            return Err(format!(
+                "Plugin package contains an unsupported link or special entry: {entry_name}"
+            ));
+        }
+        if entry.size() > MAX_ENTRY_SIZE {
+            return Err(format!("Plugin package entry is too large: {entry_name}"));
+        }
+        total_size = total_size
+            .checked_add(entry.size())
+            .ok_or_else(|| "Plugin package expanded size is invalid.".to_string())?;
+        if total_size > MAX_TOTAL_SIZE {
+            return Err(format!(
+                "Plugin package expands beyond the {} MiB limit.",
+                MAX_TOTAL_SIZE / 1024 / 1024
+            ));
+        }
+        if entry.size() > 0
+            && (entry.compressed_size() == 0
+                || entry.size()
+                    > entry
+                        .compressed_size()
+                        .saturating_mul(MAX_COMPRESSION_RATIO))
+        {
+            return Err(format!(
+                "Plugin package entry has a suspicious compression ratio: {entry_name}"
+            ));
+        }
         paths.push(relative_path);
+    }
+
+    if !has_root_manifest {
+        return Err("Plugin package must contain plugin.json at the package root.".to_string());
     }
 
     Ok(paths)
@@ -421,8 +633,8 @@ fn open_path(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        install_plugin_package_into, read_plugin_entry_from, safe_archive_path,
-        uninstall_plugin_folder_from,
+        install_plugin_package_into, read_plugin_entry_from, replace_plugin_dir, safe_archive_path,
+        uninstall_plugin_folder_from, MAX_ARCHIVE_ENTRIES, MAX_ENTRY_SIZE,
     };
     use std::{
         fs,
@@ -513,12 +725,9 @@ mod tests {
             .contains("plugin.json at the package root"));
 
         let missing = package(temp.path(), "missing-entry", &[("plugin.json", MANIFEST)]);
-        install_plugin_package_into(&missing, &plugin_dir).unwrap();
-        assert!(
-            read_plugin_entry_from(&plugin_dir, "soloist-plugin.e2e", "dist/plugin.js")
-                .unwrap_err()
-                .contains("entry was not found")
-        );
+        assert!(install_plugin_package_into(&missing, &plugin_dir)
+            .unwrap_err()
+            .contains("entry was not found in the package"));
     }
 
     #[test]
@@ -544,5 +753,105 @@ mod tests {
                 .unwrap_err()
                 .contains("entry path is unsafe")
         );
+    }
+
+    #[test]
+    fn package_limits_reject_oversized_files_and_excessive_entries() {
+        let temp = TempDir::new().unwrap();
+        let plugin_dir = temp.path().join("plugins");
+        let archive = temp.path().join("archive-size.soloist-plugin");
+        let file = fs::File::create(&archive).unwrap();
+        file.set_len(super::MAX_ARCHIVE_SIZE + 1).unwrap();
+        assert!(install_plugin_package_into(&archive, &plugin_dir)
+            .unwrap_err()
+            .contains("package is too large"));
+
+        let oversized = "x".repeat((MAX_ENTRY_SIZE + 1) as usize);
+        let oversized_package = package(
+            temp.path(),
+            "oversized",
+            &[("plugin.json", MANIFEST), ("huge.bin", &oversized)],
+        );
+        assert!(install_plugin_package_into(&oversized_package, &plugin_dir)
+            .unwrap_err()
+            .contains("entry is too large"));
+
+        let path = temp.path().join("many.soloist-plugin");
+        let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
+        for index in 0..=MAX_ARCHIVE_ENTRIES {
+            zip.start_file(format!("file-{index}"), SimpleFileOptions::default())
+                .unwrap();
+        }
+        zip.finish().unwrap();
+        assert!(install_plugin_package_into(&path, &plugin_dir)
+            .unwrap_err()
+            .contains("too many entries"));
+    }
+
+    #[test]
+    fn package_rejects_links() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("linked.soloist-plugin");
+        let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
+        zip.start_file("plugin.json", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(MANIFEST.as_bytes()).unwrap();
+        zip.add_symlink("dist/plugin.js", "target.js", SimpleFileOptions::default())
+            .unwrap();
+        zip.finish().unwrap();
+        assert!(
+            install_plugin_package_into(&path, &temp.path().join("plugins"))
+                .unwrap_err()
+                .contains("unsupported link")
+        );
+    }
+
+    #[test]
+    fn failed_update_preserves_install_and_cleans_staging() {
+        let temp = TempDir::new().unwrap();
+        let plugin_dir = temp.path().join("plugins");
+        let good = package(
+            temp.path(),
+            "same-name",
+            &[("plugin.json", MANIFEST), ("dist/plugin.js", ENTRY)],
+        );
+        install_plugin_package_into(&good, &plugin_dir).unwrap();
+        let broken = package(temp.path(), "same-name", &[("plugin.json", MANIFEST)]);
+        assert!(install_plugin_package_into(&broken, &plugin_dir).is_err());
+        assert_eq!(
+            fs::read_to_string(plugin_dir.join("same-name/dist/plugin.js")).unwrap(),
+            ENTRY
+        );
+        assert!(fs::read_dir(&plugin_dir).unwrap().all(|entry| !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".install-")));
+    }
+
+    #[test]
+    fn replacement_failure_rolls_back_previous_directory() {
+        let temp = TempDir::new().unwrap();
+        let target = temp.path().join("plugin");
+        let staged = temp.path().join("staged");
+        fs::create_dir(&target).unwrap();
+        fs::create_dir(&staged).unwrap();
+        fs::write(target.join("version"), "old").unwrap();
+        fs::write(staged.join("version"), "new").unwrap();
+        let mut calls = 0;
+        let error = replace_plugin_dir(&staged, &target, |from, to| {
+            calls += 1;
+            if calls == 2 {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "injected failure",
+                ))
+            } else {
+                fs::rename(from, to)
+            }
+        })
+        .unwrap_err();
+        assert!(error.contains("previous installation was restored"));
+        assert_eq!(fs::read_to_string(target.join("version")).unwrap(), "old");
     }
 }

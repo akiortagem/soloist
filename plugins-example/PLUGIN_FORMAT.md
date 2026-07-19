@@ -40,6 +40,21 @@ my-plugin.soloist-plugin
 Data plugins may contain only `plugin.json`. A script plugin's `entry` names its
 compiled JavaScript file relative to the archive root.
 
+## Installer safety limits
+
+Package installation is staged and validated before an existing plugin is
+replaced. A failed replacement restores the previous directory, and temporary
+extraction and backup directories are removed automatically.
+
+Archives are limited to 64 MiB compressed, 1,024 entries, 16 MiB per expanded
+file, and 64 MiB total expanded content. Entry paths are limited to 240 bytes
+and 16 components. Entries whose expanded-to-compressed ratio exceeds 200:1,
+duplicate paths, traversal or absolute paths, symbolic/hard links, and other
+special filesystem entries are rejected. A package filename may replace only a
+folder containing the same manifest ID; the same ID cannot be installed under
+multiple folder names. Script manifests are rejected unless their safe `entry`
+file is present in the staged package.
+
 To package a plugin source directory:
 
 ```sh
