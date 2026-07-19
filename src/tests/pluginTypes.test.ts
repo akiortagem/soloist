@@ -170,11 +170,36 @@ describe("plugin manifest validation", () => {
       soloistApiVersion: "1",
       type: "script",
       entry: "dist/plugin.js",
+      permissions: ["storage", "slashCommands:register"],
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.manifest.entry).toBe("dist/plugin.js");
+    expect(result.manifest.permissions).toEqual([
+      "storage",
+      "slashCommands:register",
+    ]);
+  });
+
+  it("rejects an unknown script plugin permission", () => {
+    const result = validatePluginManifest({
+      id: "soloist-plugin.script-example",
+      name: "Script Example",
+      version: "1.0.0",
+      soloistApiVersion: "1",
+      type: "script",
+      entry: "dist/plugin.js",
+      permissions: ["network"],
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual({
+      path: "$.permissions[0]",
+      code: "INVALID_FIELD_VALUE",
+      message: "Unknown script plugin permission: network",
+    });
   });
 
   it("requires an entry for script plugins", () => {

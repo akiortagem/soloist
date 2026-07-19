@@ -4,6 +4,7 @@ import type {
   PluginJsonValue,
 } from "./pluginApi";
 import type { PluginRepository } from "../persistence/pluginRepository";
+import type { ScriptPluginPermission } from "./pluginTypes";
 
 export type ScriptPluginSlashCommandRegistration = {
   id: string;
@@ -22,6 +23,7 @@ export type ScriptPluginRuntimeErrorHandler = (message: string) => void;
 export type ScriptPluginRuntimeActivateInput = {
   pluginId: string;
   entryCode: string;
+  permissions: ScriptPluginPermission[];
   onRuntimeError?: ScriptPluginRuntimeErrorHandler;
 };
 
@@ -48,6 +50,7 @@ type WorkerPluginState = {
     }
   >;
   onRuntimeError?: ScriptPluginRuntimeErrorHandler;
+  permissions: Set<ScriptPluginPermission>;
 };
 
 type WorkerMessage =
@@ -104,27 +107,38 @@ function hostRequest(pluginId, action, payload) {
   });
 }
 
-function createApi(pluginId, handlers) {
+function createApi(pluginId, handlers, permissions) {
+  function requirePermission(permission) {
+    if (!permissions.has(permission)) {
+      throw new Error("Plugin permission denied: " + permission);
+    }
+  }
   return {
     pluginId,
     storage: {
       get(key) {
+        requirePermission("storage");
         return hostRequest(pluginId, "storage.get", { key });
       },
       set(key, value) {
+        requirePermission("storage");
         return hostRequest(pluginId, "storage.set", { key, value });
       },
       remove(key) {
+        requirePermission("storage");
         return hostRequest(pluginId, "storage.remove", { key });
       },
       keys() {
+        requirePermission("storage");
         return hostRequest(pluginId, "storage.keys", {});
       },
       clear() {
+        requirePermission("storage");
         return hostRequest(pluginId, "storage.clear", {});
       },
     },
     registerSlashCommand(command) {
+      requirePermission("slashCommands:register");
       if (!command || typeof command !== "object" || typeof command.handler !== "function") {
         throw new Error("registerSlashCommand requires a command handler");
       }
@@ -145,6 +159,7 @@ function createApi(pluginId, handlers) {
       };
     },
     registerOracleProvider(provider) {
+      requirePermission("oracleProviders:register");
       post({
         type: "registerOracleProvider",
         provider: {
@@ -172,7 +187,8 @@ function createApi(pluginId, handlers) {
 
 async function activatePlugin(message) {
   const handlers = new Map();
-  const api = createApi(message.pluginId, handlers);
+  const permissions = new Set(message.permissions || []);
+  const api = createApi(message.pluginId, handlers, permissions);
   const module = { exports: {} };
   const exports = module.exports;
   self.soloistPlugin = undefined;
@@ -194,7 +210,7 @@ async function activatePlugin(message) {
     }
 
     await pluginModule.activate(api);
-    plugins.set(message.pluginId, { handlers, api, module: pluginModule });
+    plugins.set(message.pluginId, { handlers, api, module: pluginModule, permissions });
     post({ type: "activated", requestId: message.requestId });
   } catch (error) {
     post({
@@ -303,6 +319,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       slashCommands: [],
       pending: new Map(),
       onRuntimeError: input.onRuntimeError,
+      permissions: new Set(input.permissions),
     };
     this.plugins.set(input.pluginId, state);
 
@@ -330,6 +347,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       requestId,
       pluginId: input.pluginId,
       entryCode: input.entryCode,
+      permissions: input.permissions,
     });
 
     return activation;
@@ -346,6 +364,10 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       throw new Error(`Script plugin is not active: ${pluginId}`);
     }
 
+    const safeContext = state.permissions.has("document:readSelection")
+      ? context
+      : { ...context, selectedText: null };
+
     const requestId = createRequestId(pluginId, "command");
     const result = new Promise<PluginCommandExecutionResult>((resolve, reject) => {
       state.pending.set(requestId, {
@@ -359,7 +381,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       requestId,
       pluginId,
       commandId,
-      context,
+      context: safeContext,
     });
 
     return result;
@@ -389,7 +411,22 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
 
     if (message.type === "registerSlashCommand") {
+      if (!state.permissions.has("slashCommands:register")) {
+        state.onRuntimeError?.(
+          permissionDenied("slashCommands:register").message,
+        );
+        return;
+      }
       state.slashCommands.push(message.command);
+      return;
+    }
+
+    if (message.type === "registerOracleProvider") {
+      if (!state.permissions.has("oracleProviders:register")) {
+        state.onRuntimeError?.(
+          permissionDenied("oracleProviders:register").message,
+        );
+      }
       return;
     }
 
@@ -419,6 +456,18 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
 
     if (message.type === "commandResult") {
+      if (
+        isInsertResultBlock(message.result) &&
+        !state.permissions.has("document:insertBlock")
+      ) {
+        const error = permissionDenied("document:insertBlock");
+        state.onRuntimeError?.(error.message);
+        this.resolvePending(pluginId, message.requestId, {
+          ok: false,
+          error: error.message,
+        });
+        return;
+      }
       this.resolvePending(pluginId, message.requestId, {
         ok: true,
         value: message.result,
@@ -431,6 +480,9 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     message: Extract<WorkerMessage, { type: "hostRequest" }>,
   ): Promise<void> {
     try {
+      if (message.action.startsWith("storage.")) {
+        this.requirePermission(state, "storage");
+      }
       const value = await this.executeHostRequest(message.action, message.payload);
       state.worker.postMessage({
         type: "hostResponse",
@@ -439,12 +491,23 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
         value,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      state.onRuntimeError?.(errorMessage);
       state.worker.postMessage({
         type: "hostResponse",
         requestId: message.requestId,
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       });
+    }
+  }
+
+  private requirePermission(
+    state: WorkerPluginState,
+    permission: ScriptPluginPermission,
+  ): void {
+    if (!state.permissions.has(permission)) {
+      throw permissionDenied(permission);
     }
   }
 
@@ -526,6 +589,19 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
     state.pending.clear();
   }
+}
+
+function permissionDenied(permission: ScriptPluginPermission): Error {
+  return new Error(`Plugin permission denied: ${permission}`);
+}
+
+function isInsertResultBlock(value: unknown): boolean {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "type" in value &&
+      value.type === "insertResultBlock",
+  );
 }
 
 function isJsonSafe(value: unknown): value is PluginJsonValue {

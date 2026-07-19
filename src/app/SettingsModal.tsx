@@ -214,6 +214,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         {plugin.pluginId} · v{plugin.version}
                       </p>
                       <p>{createPluginTypeText(plugin)}</p>
+                      {plugin.permissions.length > 0 ? (
+                        <p>Permissions: {plugin.permissions.join(", ")}</p>
+                      ) : null}
                     </div>
                     <div className="plugin-settings-controls">
                       <span className={`plugin-status-badge ${plugin.status}`}>

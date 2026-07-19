@@ -5,6 +5,16 @@ import type {
 
 export type PluginType = "data" | "script";
 
+export const SCRIPT_PLUGIN_PERMISSIONS = [
+  "storage",
+  "slashCommands:register",
+  "oracleProviders:register",
+  "document:readSelection",
+  "document:insertBlock",
+] as const;
+
+export type ScriptPluginPermission = (typeof SCRIPT_PLUGIN_PERMISSIONS)[number];
+
 export type PluginManifest = {
   id: string;
   name: string;
@@ -12,6 +22,7 @@ export type PluginManifest = {
   soloistApiVersion: string;
   type: PluginType;
   entry?: string;
+  permissions?: ScriptPluginPermission[];
   contributes?: PluginContributions;
 };
 
@@ -85,6 +96,7 @@ const MANIFEST_KEYS = [
   "soloistApiVersion",
   "type",
   "entry",
+  "permissions",
   "contributes",
 ] as const;
 
@@ -185,6 +197,7 @@ function validateManifest(
     );
   } else if (value.type === "script") {
     requireString(value, "entry", path, context);
+    validateScriptPermissions(value, path, context);
   } else {
     optionalString(value, "entry", path, context);
   }
@@ -192,6 +205,29 @@ function validateManifest(
   if (hasOwn(value, "contributes")) {
     validateContributions(value.contributes, `${path}.contributes`, context);
   }
+}
+
+function validateScriptPermissions(
+  value: Record<string, unknown>,
+  path: string,
+  context: ValidationContext,
+): void {
+  if (!hasOwn(value, "permissions")) {
+    addMissingField(context, path, "permissions");
+    return;
+  }
+  if (!Array.isArray(value.permissions)) {
+    addError(context, `${path}.permissions`, "INVALID_ARRAY", "permissions must be an array");
+    return;
+  }
+  value.permissions.forEach((permission, index) => {
+    const permissionPath = `${path}.permissions[${index}]`;
+    if (typeof permission !== "string") {
+      addError(context, permissionPath, "INVALID_TYPE", "Permission must be a string");
+    } else if (!(SCRIPT_PLUGIN_PERMISSIONS as readonly string[]).includes(permission)) {
+      addError(context, permissionPath, "INVALID_FIELD_VALUE", `Unknown script plugin permission: ${permission}`);
+    }
+  });
 }
 
 function validateContributions(

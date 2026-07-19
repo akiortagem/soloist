@@ -49,6 +49,7 @@ export type PluginManagerStatus = {
   status: PluginManagerStatusKind;
   contributions: PluginContributionCounts;
   errors: PluginManifestValidationError[];
+  permissions: string[];
 };
 
 export type PluginManagerRegistries = {
@@ -251,6 +252,7 @@ export class PluginManager {
     const activation = await this.scriptRuntime.activatePlugin({
       pluginId: plugin.id,
       entryCode,
+      permissions: plugin.manifest.permissions ?? [],
       onRuntimeError: (message) => this.setRuntimeErrorStatus(plugin, message),
     });
 
@@ -320,6 +322,7 @@ export class PluginManager {
       status,
       contributions: { ...contributions },
       errors: errors.map((error) => ({ ...error })),
+      permissions: [...(plugin.manifest.permissions ?? [])],
     };
   }
 }
@@ -386,5 +389,6 @@ function cloneStatus(status: PluginManagerStatus): PluginManagerStatus {
     contributionLabels: [...status.contributionLabels],
     contributions: { ...status.contributions },
     errors: status.errors.map((error) => ({ ...error })),
+    permissions: [...status.permissions],
   };
 }

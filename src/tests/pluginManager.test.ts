@@ -164,6 +164,7 @@ const scriptManifest: PluginManifest = {
   soloistApiVersion: "1",
   type: "script",
   entry: "dist/plugin.js",
+  permissions: ["slashCommands:register", "document:insertBlock"],
 };
 
 describe("PluginManager", () => {

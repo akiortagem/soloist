@@ -60,8 +60,13 @@ Optional fields:
 | --- | --- | --- |
 | `contributes` | object | Declarative content contributed by the plugin. |
 | `entry` | string | Required for script plugins. Relative path to the compiled JavaScript entry file. |
+| `permissions` | string[] | Required for script plugins. Explicit API capabilities requested by the plugin. |
 
 Unknown manifest fields are rejected.
+
+Supported script permissions are `storage`, `slashCommands:register`,
+`oracleProviders:register`, `document:readSelection`, and
+`document:insertBlock`. Data plugins do not need a `permissions` field.
 
 Script plugin `entry` paths must be relative package paths. Parent-directory,
 absolute, and platform-prefix paths are rejected. The entry file is read from
@@ -87,6 +92,7 @@ Script plugin manifest example:
   "version": "1.0.0",
   "soloistApiVersion": "1",
   "type": "script",
+  "permissions": ["slashCommands:register", "document:insertBlock"],
   "entry": "dist/plugin.js"
 }
 ```
