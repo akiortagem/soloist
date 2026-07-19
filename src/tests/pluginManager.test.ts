@@ -176,6 +176,7 @@ describe("PluginManager", () => {
     expect(statuses).toMatchObject([
       {
         pluginId: validManifest.id,
+        pluginType: "data",
         status: "loaded",
         contributions: {
           slashCommands: 2,

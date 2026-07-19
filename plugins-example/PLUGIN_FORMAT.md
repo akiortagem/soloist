@@ -6,7 +6,8 @@ a zip archive with a `plugin.json` manifest at the package root.
 Soloist supports data plugins and compiled-JavaScript script plugins. Data
 plugins contribute declarative content such as slash commands, random tables,
 oracle tables, and character sheet templates. Script plugins run from a compiled
-JavaScript entry file through an isolated Worker runtime.
+JavaScript entry file in a Worker. The Worker keeps plugin work off the React
+thread, but it is not a security sandbox. See [Script plugin security](SCRIPT_PLUGIN_SECURITY.md).
 
 Soloist defines the public TypeScript SDK surface for compiled-JavaScript script
 plugins in `src/plugins/pluginApi.ts`. Plugin authors should write script
@@ -60,7 +61,7 @@ Optional fields:
 | --- | --- | --- |
 | `contributes` | object | Declarative content contributed by the plugin. |
 | `entry` | string | Required for script plugins. Relative path to the compiled JavaScript entry file. |
-| `permissions` | string[] | Required for script plugins. Explicit API capabilities requested by the plugin. |
+| `permissions` | string[] | Required for script plugins. Soloist host API capabilities requested by the plugin; this is not a list of ambient browser capabilities. |
 
 Unknown manifest fields are rejected.
 
@@ -71,6 +72,7 @@ Supported script permissions are `storage`, `slashCommands:register`,
 Script plugin `entry` paths must be relative package paths. Parent-directory,
 absolute, and platform-prefix paths are rejected. The entry file is read from
 the installed plugin folder and executed outside the main React app context.
+Script plugins are installed disabled and must be explicitly trusted before use.
 
 ```json
 {

@@ -43,6 +43,7 @@ export type PluginManagerStatus = {
   name: string;
   version: string;
   enabled: boolean;
+  pluginType: InstalledPluginRecord["type"];
   typeLabel: string;
   contributionLabels: string[];
   isCharacterSheetTemplatePlugin: boolean;
@@ -316,6 +317,7 @@ export class PluginManager {
       name: plugin.name,
       version: plugin.version,
       enabled: plugin.enabled,
+      pluginType: plugin.type,
       typeLabel: createPluginTypeLabel(plugin),
       contributionLabels: createPluginContributionLabels(plugin),
       isCharacterSheetTemplatePlugin: isCharacterSheetTemplatePlugin(plugin),

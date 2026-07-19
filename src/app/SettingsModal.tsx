@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { appStore, useAppStore } from "../state/appStore";
 import type { PluginManifest } from "../plugins/pluginTypes";
+import { SCRIPT_PLUGIN_TRUST_WARNING } from "../plugins/scriptPluginSecurity";
 
 type SettingsSection = "plugins";
 
@@ -23,7 +24,10 @@ type PluginPackageInstallResult = {
 };
 
 function isCharacterSheetTemplateManifest(manifest: PluginManifest) {
-  return (manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0;
+  return (
+    manifest.type === "data" &&
+    (manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0
+  );
 }
 
 function createPluginTypeText(plugin: {
@@ -93,7 +97,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  async function setPluginEnabled(pluginId: string, enabled: boolean) {
+  async function setPluginEnabled(
+    pluginId: string,
+    pluginName: string,
+    pluginType: "data" | "script",
+    enabled: boolean,
+  ) {
+    if (
+      enabled &&
+      pluginType === "script" &&
+      !window.confirm(`Enable script plugin "${pluginName}"?\n\n${SCRIPT_PLUGIN_TRUST_WARNING}`)
+    ) {
+      return;
+    }
+
     setUpdatingPluginId(pluginId);
     setInstallError(null);
 
@@ -214,8 +231,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         {plugin.pluginId} · v{plugin.version}
                       </p>
                       <p>{createPluginTypeText(plugin)}</p>
-                      {plugin.permissions.length > 0 ? (
-                        <p>Permissions: {plugin.permissions.join(", ")}</p>
+                      {plugin.pluginType === "script" ? (
+                        <>
+                          <p className="settings-warning">
+                            Trusted code: has ambient network, browser storage,
+                            script-loading, and worker access.
+                          </p>
+                          <p>
+                            Soloist API permissions: {plugin.permissions.length > 0
+                              ? plugin.permissions.join(", ")
+                              : "none"}
+                          </p>
+                        </>
                       ) : null}
                     </div>
                     <div className="plugin-settings-controls">
@@ -239,7 +266,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           aria-pressed={plugin.enabled}
                           disabled={updatingPluginId === plugin.pluginId}
                           onClick={() =>
-                            void setPluginEnabled(plugin.pluginId, !plugin.enabled)
+                            void setPluginEnabled(
+                              plugin.pluginId,
+                              plugin.name,
+                              plugin.pluginType,
+                              !plugin.enabled,
+                            )
                           }
                           title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
                           type="button"

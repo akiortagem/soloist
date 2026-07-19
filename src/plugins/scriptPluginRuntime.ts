@@ -91,7 +91,7 @@ type WorkerMessage =
       payload: Record<string, unknown>;
     };
 
-const WORKER_SOURCE = `
+export const SCRIPT_PLUGIN_WORKER_SOURCE = `
 const plugins = new Map();
 const hostRequests = new Map();
 
@@ -311,7 +311,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
 
     const worker = new Worker(
       URL.createObjectURL(
-        new Blob([WORKER_SOURCE], { type: "application/javascript" }),
+        new Blob([SCRIPT_PLUGIN_WORKER_SOURCE], { type: "application/javascript" }),
       ),
     );
     const state: WorkerPluginState = {

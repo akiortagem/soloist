@@ -239,5 +239,11 @@ pub fn migrations() -> Vec<Migration> {
 "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 20,
+            description: "require_script_plugin_retrust",
+            sql: "UPDATE installed_plugins SET enabled = 0 WHERE type = 'script';",
+            kind: MigrationKind::Up,
+        },
     ]
 }
