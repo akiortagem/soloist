@@ -7,11 +7,13 @@ type PostedMessage = Record<string, unknown>;
 
 class FakeWorker {
   static instances: FakeWorker[] = [];
+  static autoActivate = true;
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   messages: PostedMessage[] = [];
   commandResult: unknown = { type: "deleteCommand" };
   activationMessages: unknown[] = [];
+  terminated = false;
 
   constructor() {
     FakeWorker.instances.push(this);
@@ -21,6 +23,7 @@ class FakeWorker {
     this.messages.push(message);
     queueMicrotask(() => {
       if (message.type === "activate") {
+        if (!FakeWorker.autoActivate) return;
         for (const data of this.activationMessages) {
           this.onmessage?.({ data } as MessageEvent);
         }
@@ -45,22 +48,26 @@ class FakeWorker {
     });
   }
 
-  terminate() {}
+  terminate() { this.terminated = true; }
 }
 
 const originalWorker = globalThis.Worker;
 const originalCreateObjectUrl = URL.createObjectURL;
+const originalRevokeObjectUrl = URL.revokeObjectURL;
 
 afterEach(() => {
   vi.restoreAllMocks();
   FakeWorker.instances = [];
+  FakeWorker.autoActivate = true;
   globalThis.Worker = originalWorker;
   URL.createObjectURL = originalCreateObjectUrl;
+  URL.revokeObjectURL = originalRevokeObjectUrl;
 });
 
 function installWorker() {
   globalThis.Worker = FakeWorker as unknown as typeof Worker;
   URL.createObjectURL = vi.fn(() => "blob:plugin-runtime");
+  URL.revokeObjectURL = vi.fn();
 }
 
 describe("script plugin runtime permissions", () => {
@@ -258,5 +265,78 @@ describe("script plugin runtime permissions", () => {
 
     await expect(getOracleProvider("bad-oracle:bad")?.askYesNo({ question: "?", odds: "50_50", d100: 1, chaosFactor: 5 })).rejects.toThrow();
     runtime.deactivatePlugin("bad-oracle");
+  });
+});
+
+describe("script plugin runtime lifecycle", () => {
+  it("times out activation, terminates the worker, and revokes its Blob URL", async () => {
+    vi.useFakeTimers();
+    installWorker();
+    FakeWorker.autoActivate = false;
+    const runtime = new WorkerScriptPluginRuntime(undefined, undefined, { activationTimeoutMs: 25 });
+    const activation = runtime.activatePlugin({ pluginId: "hung", entryCode: "code", permissions: [] });
+    const worker = FakeWorker.instances[0];
+    const rejection = expect(activation).rejects.toThrow("activation timed out after 25ms");
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(worker.terminated).toBe(true);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:plugin-runtime");
+    await expect(runtime.executeCommand("hung", "x", {} as never)).rejects.toThrow("not active");
+    vi.useRealTimers();
+  });
+
+  it("times out a command and settles every other pending request", async () => {
+    vi.useFakeTimers();
+    installWorker();
+    const runtime = new WorkerScriptPluginRuntime(undefined, undefined, { commandTimeoutMs: 20 });
+    await runtime.activatePlugin({ pluginId: "commands", entryCode: "code", permissions: [] });
+    const worker = FakeWorker.instances[0];
+    worker.postMessage = (message) => { worker.messages.push(message); };
+    const first = runtime.executeCommand("commands", "first", {} as never);
+    const second = runtime.executeCommand("commands", "second", {} as never);
+    const firstRejection = expect(first).rejects.toThrow("command first timed out after 20ms");
+    const secondRejection = expect(second).rejects.toThrow();
+
+    await vi.advanceTimersByTimeAsync(20);
+    await firstRejection;
+    await secondRejection;
+    expect(worker.terminated).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("tears down activation errors and uncaught worker crashes", async () => {
+    installWorker();
+    const runtime = new WorkerScriptPluginRuntime();
+    const failed = runtime.activatePlugin({ pluginId: "failed", entryCode: "code", permissions: [] });
+    const failedWorker = FakeWorker.instances[0];
+    failedWorker.activationMessages = [{ type: "activationError", requestId: failedWorker.messages[0]?.requestId, message: "boom" }];
+    // Deliver explicitly because the fake activation response may already be queued.
+    failedWorker.onmessage?.({ data: { type: "activationError", requestId: failedWorker.messages[0]?.requestId, message: "boom" } } as MessageEvent);
+    await expect(failed).rejects.toThrow("boom");
+    expect(failedWorker.terminated).toBe(true);
+
+    await runtime.activatePlugin({ pluginId: "crash", entryCode: "code", permissions: [] });
+    const crashWorker = FakeWorker.instances[1];
+    crashWorker.onerror?.({ message: "uncaught" } as ErrorEvent);
+    expect(crashWorker.terminated).toBe(true);
+    await expect(runtime.executeCommand("crash", "x", {} as never)).rejects.toThrow("not active");
+  });
+
+  it("waits for deactivation acknowledgement and ignores stale worker messages after reload", async () => {
+    installWorker();
+    const runtime = new WorkerScriptPluginRuntime(undefined, undefined, { deactivationTimeoutMs: 50 });
+    await runtime.activatePlugin({ pluginId: "reload", entryCode: "old", permissions: ["slashCommands:register"] });
+    const oldWorker = FakeWorker.instances[0];
+    const deactivation = runtime.deactivatePlugin("reload") as Promise<void>;
+    const request = oldWorker.messages[oldWorker.messages.length - 1]!;
+    expect(oldWorker.terminated).toBe(false);
+    oldWorker.onmessage?.({ data: { type: "deactivated", requestId: request.requestId } } as MessageEvent);
+    await deactivation;
+    expect(oldWorker.terminated).toBe(true);
+
+    await runtime.activatePlugin({ pluginId: "reload", entryCode: "new", permissions: ["slashCommands:register"] });
+    oldWorker.onmessage?.({ data: { type: "registerSlashCommand", command: { id: "stale", name: "stale", label: "Stale", prefix: "/stale" } } } as MessageEvent);
+    expect(FakeWorker.instances[1].terminated).toBe(false);
   });
 });

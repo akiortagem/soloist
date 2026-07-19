@@ -133,6 +133,23 @@ Script plugin manifest example:
 }
 ```
 
+### Script lifecycle and cleanup
+
+Script plugins run in a dedicated Worker. Activation and every command or
+oracle invocation have host-configured deadlines; exceeding one terminates that
+plugin's Worker and rejects all of its outstanding operations. Other plugins
+and the main UI continue independently.
+
+On reload, disable, or uninstall, Soloist calls an optional asynchronous
+`deactivate()` export and waits for it only for a bounded grace period (one
+second by default). During that grace period the hook may finish in-memory
+cleanup, but it must not rely on starting or completing host API requests.
+Registrations and UI status are removed as deactivation begins. After the hook
+acknowledges completion, throws, or reaches the deadline, the Worker is
+terminated unconditionally. Cleanup that must survive forced termination
+should therefore be persisted during normal plugin operation rather than left
+to `deactivate()`.
+
 ## Contributions
 
 Supported contribution groups:

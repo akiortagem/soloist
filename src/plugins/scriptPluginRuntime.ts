@@ -50,7 +50,21 @@ export type ScriptPluginRuntime = {
     commandId: string,
     context: PluginCommandContext,
   ): Promise<PluginCommandExecutionResult>;
-  deactivatePlugin(pluginId: string): void;
+  deactivatePlugin(pluginId: string): Promise<void> | void;
+};
+
+export type ScriptPluginRuntimeOptions = {
+  activationTimeoutMs?: number;
+  commandTimeoutMs?: number;
+  hostRequestTimeoutMs?: number;
+  deactivationTimeoutMs?: number;
+};
+
+const DEFAULT_TIMEOUTS = {
+  activationTimeoutMs: 10_000,
+  commandTimeoutMs: 30_000,
+  hostRequestTimeoutMs: 10_000,
+  deactivationTimeoutMs: 1_000,
 };
 
 type WorkerPluginState = {
@@ -62,10 +76,12 @@ type WorkerPluginState = {
     {
       resolve(value: unknown): void;
       reject(error: Error): void;
+      timer: ReturnType<typeof setTimeout>;
     }
   >;
   onRuntimeError?: ScriptPluginRuntimeErrorHandler;
   permissions: Set<ScriptPluginPermission>;
+  deactivation?: Promise<void>;
 };
 
 type WorkerMessage =
@@ -83,6 +99,7 @@ type WorkerMessage =
       requestId: string;
       result: unknown;
     }
+  | { type: "deactivated"; requestId: string; error?: string }
   | {
       type: "registerSlashCommand";
       command: ScriptPluginSlashCommandRegistration;
@@ -284,10 +301,17 @@ async function invokeOracle(message) {
 
 async function deactivatePlugin(message) {
   const plugin = plugins.get(message.pluginId);
-  if (plugin && plugin.module && typeof plugin.module.deactivate === "function") {
-    await plugin.module.deactivate();
+  try {
+    if (plugin && plugin.module && typeof plugin.module.deactivate === "function") {
+      await plugin.module.deactivate();
+    }
+    plugins.delete(message.pluginId);
+    post({ type: "deactivated", requestId: message.requestId });
+  } catch (error) {
+    plugins.delete(message.pluginId);
+    post({ type: "deactivated", requestId: message.requestId,
+      error: error instanceof Error ? error.message : String(error) });
   }
-  plugins.delete(message.pluginId);
 }
 
 self.onmessage = (event) => {
@@ -338,26 +362,36 @@ function createRuntimeError(message: string) {
 
 export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
   private readonly plugins = new Map<string, WorkerPluginState>();
+  private readonly timeouts: typeof DEFAULT_TIMEOUTS;
 
   constructor(
     private readonly pluginRepository?: PluginRepository,
     private readonly pluginUi: PluginUiRegistry = pluginUiRegistry,
-  ) {}
+    options: ScriptPluginRuntimeOptions = {},
+  ) {
+    this.timeouts = { ...DEFAULT_TIMEOUTS, ...options };
+  }
 
   async activatePlugin(
     input: ScriptPluginRuntimeActivateInput,
   ): Promise<ScriptPluginActivationResult> {
-    this.deactivatePlugin(input.pluginId);
+    if (this.plugins.has(input.pluginId)) {
+      await this.deactivatePlugin(input.pluginId);
+    }
 
     if (typeof Worker === "undefined" || typeof Blob === "undefined") {
       throw new Error("Script plugin runtime requires Worker support");
     }
 
-    const worker = new Worker(
-      URL.createObjectURL(
-        new Blob([SCRIPT_PLUGIN_WORKER_SOURCE], { type: "application/javascript" }),
-      ),
+    const workerUrl = URL.createObjectURL(
+      new Blob([SCRIPT_PLUGIN_WORKER_SOURCE], { type: "application/javascript" }),
     );
+    let worker: Worker;
+    try {
+      worker = new Worker(workerUrl);
+    } finally {
+      URL.revokeObjectURL(workerUrl);
+    }
     const state: WorkerPluginState = {
       pluginId: input.pluginId,
       worker,
@@ -369,18 +403,18 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     this.plugins.set(input.pluginId, state);
 
     worker.onmessage = (event: MessageEvent<unknown>) => {
-      void this.handleWorkerMessage(input.pluginId, event.data);
+      void this.handleWorkerMessage(state, event.data);
     };
     worker.onerror = (event) => {
       const message = event.message || "Script plugin worker failed";
       input.onRuntimeError?.(message);
-      this.rejectPending(input.pluginId, message);
+      this.terminateState(state, `Script plugin worker crashed: ${message}`);
     };
 
     const requestId = createRequestId(input.pluginId, "activate");
     const activation = new Promise<ScriptPluginActivationResult>(
       (resolve, reject) => {
-        state.pending.set(requestId, {
+        this.addPending(state, requestId, this.timeouts.activationTimeoutMs, "activation", {
           resolve: () => resolve({ slashCommands: [...state.slashCommands] }),
           reject,
         });
@@ -395,7 +429,10 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       permissions: input.permissions,
     });
 
-    return activation;
+    return activation.catch((error) => {
+      this.terminateState(state, `Script plugin activation failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    });
   }
 
   async executeCommand(
@@ -415,7 +452,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
 
     const requestId = createRequestId(pluginId, "command");
     const result = new Promise<PluginCommandExecutionResult>((resolve, reject) => {
-      state.pending.set(requestId, {
+      this.addPending(state, requestId, this.timeouts.commandTimeoutMs, `command ${commandId}`, {
         resolve: (value) => resolve(value as PluginCommandExecutionResult),
         reject,
       });
@@ -432,30 +469,35 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     return result;
   }
 
-  deactivatePlugin(pluginId: string): void {
+  async deactivatePlugin(pluginId: string): Promise<void> {
     const state = this.plugins.get(pluginId);
 
     if (!state) {
       return;
     }
-
-    state.worker.postMessage({ type: "deactivate", pluginId });
-    state.worker.terminate();
-    this.rejectPending(pluginId, "Script plugin was deactivated");
-    this.plugins.delete(pluginId);
+    if (state.deactivation) return state.deactivation;
     this.pluginUi.unregisterPlugin(pluginId);
     unregisterPluginOracleProviders(pluginId);
+    this.rejectPending(state, "Script plugin was deactivated");
+    const requestId = createRequestId(pluginId, "deactivate");
+    state.deactivation = new Promise<void>((resolve) => {
+      this.addPending(state, requestId, this.timeouts.deactivationTimeoutMs, "deactivation", {
+        resolve: () => resolve(),
+        reject: () => resolve(),
+      }, false);
+      state.worker.postMessage({ type: "deactivate", requestId, pluginId });
+    }).finally(() => this.terminateState(state, "Script plugin was deactivated"));
+    return state.deactivation;
   }
 
   private async handleWorkerMessage(
-    pluginId: string,
+    state: WorkerPluginState,
     rawMessage: unknown,
   ): Promise<void> {
-    const state = this.plugins.get(pluginId);
-
-    if (!state) {
+    if (this.plugins.get(state.pluginId) !== state) {
       return;
     }
+    const pluginId = state.pluginId;
 
     let message: WorkerMessage;
     try {
@@ -539,6 +581,12 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       return;
     }
 
+    if (message.type === "deactivated") {
+      if (message.error) state.onRuntimeError?.(`Plugin deactivation failed: ${message.error}`);
+      this.resolvePending(pluginId, message.requestId, { ok: true });
+      return;
+    }
+
     if (message.type === "commandResult") {
       let result: PluginCommandExecutionResult;
       try {
@@ -615,7 +663,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     if (!state) return Promise.reject(new Error(`Script plugin is not active: ${pluginId}`));
     const requestId = createRequestId(pluginId, `oracle:${method}`);
     const result = new Promise<unknown>((resolve, reject) => {
-      state.pending.set(requestId, { resolve, reject });
+      this.addPending(state, requestId, this.timeouts.commandTimeoutMs, `oracle ${method}`, { resolve, reject });
     });
     state.worker.postMessage({ type: "invokeOracle", requestId, pluginId, providerId, method, input });
     return result.then((value) => ({
@@ -635,7 +683,12 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
       if (message.action.startsWith("storage.")) {
         this.requirePermission(state, "storage");
       }
-      const value = await this.executeHostRequest(message.action, message.payload);
+      const value = await this.withTimeout(
+        this.executeHostRequest(message.action, message.payload),
+        this.timeouts.hostRequestTimeoutMs,
+        `Host request ${message.action} timed out after ${this.timeouts.hostRequestTimeoutMs}ms`,
+      );
+      if (this.plugins.get(state.pluginId) !== state) return;
       state.worker.postMessage({
         type: "hostResponse",
         requestId: message.requestId,
@@ -645,6 +698,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       state.onRuntimeError?.(errorMessage);
+      if (this.plugins.get(state.pluginId) !== state) return;
       state.worker.postMessage({
         type: "hostResponse",
         requestId: message.requestId,
@@ -719,6 +773,7 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
 
     state.pending.delete(requestId);
+    clearTimeout(pending.timer);
 
     if (result.ok) {
       pending.resolve(result.value);
@@ -727,14 +782,9 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     }
   }
 
-  private rejectPending(pluginId: string, message: string): void {
-    const state = this.plugins.get(pluginId);
-
-    if (!state) {
-      return;
-    }
-
+  private rejectPending(state: WorkerPluginState, message: string): void {
     for (const pending of state.pending.values()) {
+      clearTimeout(pending.timer);
       pending.reject(createRuntimeError(message));
     }
     state.pending.clear();
@@ -747,8 +797,48 @@ export class WorkerScriptPluginRuntime implements ScriptPluginRuntime {
     if (requestId) {
       this.resolvePending(pluginId, requestId, { ok: false, error: message });
     } else {
-      this.rejectPending(pluginId, message);
+      if (state) this.terminateState(state, message);
     }
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(createRuntimeError(message)), timeoutMs);
+      promise.then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (error) => { clearTimeout(timer); reject(error); },
+      );
+    });
+  }
+
+  private addPending(
+    state: WorkerPluginState,
+    requestId: string,
+    timeoutMs: number,
+    action: string,
+    callbacks: { resolve(value: unknown): void; reject(error: Error): void },
+    terminateOnTimeout = true,
+  ): void {
+    const timer = setTimeout(() => {
+      if (!state.pending.has(requestId)) return;
+      state.pending.delete(requestId);
+      const message = `Script plugin ${action} timed out after ${timeoutMs}ms`;
+      callbacks.reject(createRuntimeError(message));
+      state.onRuntimeError?.(message);
+      if (terminateOnTimeout) this.terminateState(state, message);
+    }, timeoutMs);
+    state.pending.set(requestId, { ...callbacks, timer });
+  }
+
+  private terminateState(state: WorkerPluginState, message: string): void {
+    if (this.plugins.get(state.pluginId) !== state) return;
+    state.worker.onmessage = null;
+    state.worker.onerror = null;
+    state.worker.terminate();
+    this.rejectPending(state, message);
+    this.plugins.delete(state.pluginId);
+    this.pluginUi.unregisterPlugin(state.pluginId);
+    unregisterPluginOracleProviders(state.pluginId);
   }
 }
 
@@ -773,6 +863,9 @@ function validateWorkerMessage(value: unknown): WorkerMessage {
     case "commandResult":
       assertEnvelopeKeys(message, ["type", "requestId", "result"]);
       return { type, requestId: requestId(), result: message.result };
+    case "deactivated":
+      assertEnvelopeKeys(message, ["type", "requestId", "error"]);
+      return { type, requestId: requestId(), ...(message.error === undefined ? {} : { error: errorMessage() }) };
     case "registerSlashCommand":
       assertEnvelopeKeys(message, ["type", "command"]);
       return { type, command: message.command as ScriptPluginSlashCommandRegistration };

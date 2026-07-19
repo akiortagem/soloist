@@ -107,7 +107,7 @@ export class PluginManager {
   async reload(): Promise<PluginManagerStatus[]> {
     const plugins = await this.pluginRepository.listInstalled();
 
-    this.clearPluginContributions(plugins);
+    await this.clearPluginContributions(plugins);
     this.statuses.clear();
 
     for (const plugin of plugins) {
@@ -127,7 +127,7 @@ export class PluginManager {
     return status ? cloneStatus(status) : undefined;
   }
 
-  private clearPluginContributions(plugins: InstalledPluginRecord[]): void {
+  private async clearPluginContributions(plugins: InstalledPluginRecord[]): Promise<void> {
     const pluginIds = new Set([
       ...this.loadedPluginIds,
       ...plugins.map((plugin) => plugin.id),
@@ -139,7 +139,7 @@ export class PluginManager {
       this.registries.slashCommands.unregisterPlugin(pluginId);
       this.registries.oracleTables.unregisterPlugin(pluginId);
       this.registries.characterSheetTemplates.unregisterPlugin(pluginId);
-      this.scriptRuntime.deactivatePlugin(pluginId);
+      await this.scriptRuntime.deactivatePlugin(pluginId);
     }
 
     this.loadedPluginIds.clear();
@@ -166,7 +166,7 @@ export class PluginManager {
     } catch (error) {
       pluginUiRegistry.unregisterPlugin(plugin.id);
       unregisterPluginOracleProviders(plugin.id);
-      this.scriptRuntime.deactivatePlugin(plugin.id);
+      await this.scriptRuntime.deactivatePlugin(plugin.id);
       this.registries.slashCommands.unregisterPlugin(plugin.id);
       this.registries.oracleTables.unregisterPlugin(plugin.id);
       this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
@@ -320,7 +320,7 @@ export class PluginManager {
     unregisterPluginOracleProviders(plugin.id);
     this.registries.oracleTables.unregisterPlugin(plugin.id);
     this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
-    this.scriptRuntime.deactivatePlugin(plugin.id);
+    void this.scriptRuntime.deactivatePlugin(plugin.id);
     this.loadedPluginIds.delete(plugin.id);
 
     this.statuses.set(
