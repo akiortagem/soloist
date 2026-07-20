@@ -39,11 +39,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint architecture and source
+        run: npm run lint
+      - name: Check formatting
+        run: npm run format:check
       - name: Pack author SDK
         run: npm run sdk:pack
       - name: Build and package reference plugin
         run: npm run example:install && npm run example:package
-      - name: Frontend and real-worker tests
-        run: npm test
+      - name: Frontend tests with coverage
+        run: npm run test:coverage
+      - name: Production frontend build
+        run: npm run build
       - name: Rust archive and extraction tests
         run: cargo test --manifest-path src-tauri/Cargo.toml

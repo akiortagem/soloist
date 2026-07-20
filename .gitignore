@@ -4,6 +4,7 @@ node_modules/
 # Frontend build output
 dist/
 dist-ssr/
+coverage/
 !plugins-example/script-plugin/dist/
 !plugins-example/script-plugin/dist/plugin.js
 

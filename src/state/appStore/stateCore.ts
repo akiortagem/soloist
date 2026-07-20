@@ -176,14 +176,14 @@ export function setState(patch: Partial<AppState>) {
     "persistenceError",
   ]);
 
-  uiPatch && uiStore.setState(uiPatch);
-  sessionPatch && sessionStore.setState(sessionPatch);
-  documentPatch && documentStore.setState(documentPatch);
-  characterSheetPatch && characterSheetStore.setState(characterSheetPatch);
-  combatPatch && combatStore.setState(combatPatch);
-  oraclePatch && oracleStore.setState(oraclePatch);
-  pluginPatch && pluginStore.setState(pluginPatch);
-  persistencePatch && persistenceStore.setState(persistencePatch);
+  if (uiPatch) uiStore.setState(uiPatch);
+  if (sessionPatch) sessionStore.setState(sessionPatch);
+  if (documentPatch) documentStore.setState(documentPatch);
+  if (characterSheetPatch) characterSheetStore.setState(characterSheetPatch);
+  if (combatPatch) combatStore.setState(combatPatch);
+  if (oraclePatch) oracleStore.setState(oraclePatch);
+  if (pluginPatch) pluginStore.setState(pluginPatch);
+  if (persistencePatch) persistenceStore.setState(persistencePatch);
 
   syncCompatibilityState();
   isApplyingCompatibilityPatch = false;

@@ -1,0 +1,19 @@
+{
+  "src/app/App.tsx": 759,
+  "src/app/SettingsModal.tsx": 315,
+  "src/characterSheets/CharacterSheetBuilder.tsx": 476,
+  "src/characterSheets/CharacterSheetTemplatePanel.tsx": 1353,
+  "src/characterSheets/characterSheetTemplateLogic.ts": 405,
+  "src/combat/CombatPanel.tsx": 1015,
+  "src/commands/executeCommand.ts": 446,
+  "src/editor/Editor.tsx": 906,
+  "src/editor/markdown.ts": 686,
+  "src/onboarding/onboardingContent.ts": 318,
+  "src/persistence/characterSheetRepository.ts": 306,
+  "src/plugins/pluginManager.ts": 424,
+  "src/plugins/pluginTypes.ts": 883,
+  "src/plugins/scriptPluginRuntime.ts": 977,
+  "src/state/appStore/campaignActions.ts": 429,
+  "src/state/appStore/characterSheetActions.ts": 456,
+  "src/state/appStore/combatActions.ts": 399
+}

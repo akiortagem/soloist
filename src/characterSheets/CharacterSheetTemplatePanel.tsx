@@ -736,26 +736,6 @@ function TemplateEditor({
     setEditingItemId(field.id);
   }
 
-  function addFieldToLayoutColumn(layoutId: string, columnId: string) {
-    const field = createTemplateField();
-
-    setFields((currentFields) =>
-      currentFields.map((item) =>
-        isTemplateLayout(item) && item.id === layoutId
-          ? {
-              ...item,
-              columns: item.columns.map((column) =>
-                column.id === columnId
-                  ? { ...column, fields: [...column.fields, field] }
-                  : column,
-              ),
-            }
-          : item,
-      ),
-    );
-    setEditingItemId(field.id);
-  }
-
   function insertItem(nextItem: CharacterTemplateItem) {
     if (!selectedColumnId) {
       setFields((currentFields) => [...currentFields, nextItem]);

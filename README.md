@@ -27,6 +27,15 @@ npm run tauri:dev
 
 This starts Vite on `http://localhost:1420` for the Tauri dev shell. The production app does not require a server.
 
+Run the same frontend quality gates used by CI:
+
+```sh
+npm run quality
+```
+
+Individual gates are available as `npm run typecheck`, `npm run lint`,
+`npm run format:check`, `npm run test:coverage`, and `npm run build`.
+
 ## Portable Builds
 
 Build the portable desktop executable:

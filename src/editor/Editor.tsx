@@ -18,7 +18,6 @@ import type {
 } from "../domain/domainTypes";
 import {
   createFieldsFromTemplate,
-  isTemplateField,
   isTemplateGroup,
   isTemplateLayout,
   isTemplateSeparator,

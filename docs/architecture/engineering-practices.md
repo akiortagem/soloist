@@ -12,6 +12,10 @@ exception must be documented in the pull request with a follow-up issue.
   clearly identified.
 - Existing files over 300 lines are legacy hotspots: do not add a new
   responsibility to them, and reduce them when materially changed.
+- Legacy hotspots are recorded in `scripts/architecture-baseline.json`. The
+  file-size check rejects new files over 300 lines and any growth beyond a
+  hotspot's recorded size. Reduce or remove baseline entries as slices migrate;
+  adding an exception requires a documented follow-up issue.
 - Functions should normally stay below 40 lines and components below 150 lines.
   Split by responsibility, not merely to satisfy a counter.
 - One file should have one primary reason to change.
@@ -103,6 +107,14 @@ them clearer.
 - Test outcomes and public behavior rather than private implementation details.
 - New ports with multiple adapters should have reusable contract tests.
 - Every pull request must pass typecheck, lint, tests, and production build.
+- Run all frontend gates locally with `npm run quality`. CI runs typecheck,
+  ESLint and architecture checks, Prettier verification, coverage, tests, and
+  the production frontend build. Rust tests run in the same workflow.
+- `.prettierignore` records the transitional formatting baseline. New
+  feature-first architecture roots are checked; remove legacy ignore entries as
+  their slices are formatted instead of adding new source exclusions.
+- Coverage thresholds in `vite.config.ts` baseline the current suite and block
+  regressions. Raise them as each vertical slice gains focused tests.
 - Keep commits and pull requests focused on one architectural step; avoid mixing
   broad moves with unrelated behavior changes.
 - Performance changes require a measurement before and after.

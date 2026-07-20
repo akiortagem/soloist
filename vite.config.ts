@@ -3,6 +3,18 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      thresholds: {
+        statements: 55,
+        branches: 45,
+        functions: 55,
+        lines: 55,
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 1420,
