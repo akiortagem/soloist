@@ -1,6 +1,7 @@
 # Clean Architecture refactor plan
 
-This is the canonical migration plan for issues #26–#33. Issues define bounded
+This is the canonical migration plan for issues #26–#33. Issue numbers follow
+the required execution order: #26 is Phase 0 and #33 is Phase 7. Issues define bounded
 deliverables; this document defines the shared pattern, order, and completion
 conditions. Update this plan when sequencing or scope changes rather than
 letting individual issues diverge.
@@ -41,7 +42,7 @@ direction changes and the old execution path is gone.
 
 ## Delivery phases
 
-### Phase 0 — Rules and safety net (#27)
+### Phase 0 — Rules and safety net (#26)
 
 Establish this documentation, linting/formatting, boundary checks, coverage, and
 CI. Legacy violations may be baselined, but new violations must be blocked.
@@ -53,7 +54,7 @@ Exit conditions:
   practical.
 - Test, typecheck, lint, and build run consistently in CI.
 
-### Phase 1 — Dependency foundation (#28)
+### Phase 1 — Dependency foundation (#27)
 
 Create feature scaffolding, application ports, infrastructure adapters, and the
 composition root. Prove the shape with one small end-to-end vertical slice.
@@ -65,11 +66,11 @@ Exit conditions:
   app.
 - New application code does not call `createRepositories()` or Tauri directly.
 
-### Phase 2 — Plugin vertical slice (#26, then #29)
+### Phase 2 — Plugin application use cases (#28)
 
 Plugins are the first full migration because they cross persistence, Tauri,
-workers, validation, registries, SDK contracts, and presentation. First extract
-plugin use cases; then decompose lifecycle/runtime infrastructure.
+workers, validation, registries, SDK contracts, and presentation. Extract the
+application use cases and make the store a thin adapter for these workflows.
 
 Target division:
 
@@ -84,10 +85,22 @@ features/plugins/
 Exit conditions:
 
 - Plugin workflows run without `appStore` in application tests.
+- Install, enable, disable, uninstall, reload, and template reinstall use cases
+  are covered with in-memory ports.
+
+### Phase 3 — Plugin lifecycle and runtime (#29)
+
+Decompose plugin lifecycle coordination and the script runtime after plugin
+workflows have stable application boundaries.
+
+Exit conditions:
+
 - Activation rollback is explicit and tested.
+- Worker transport, host dispatch, permission policy, validation, and lifecycle
+  management have focused ownership.
 - Host and SDK contracts cannot silently drift.
 
-### Phase 3 — Command and editor slice (#30)
+### Phase 4 — Command and editor slice (#30)
 
 Introduce command execution ports/handlers, separate pure result construction
 from effects, and split editor routing, persistence coordination, and slash-menu
@@ -110,7 +123,7 @@ Exit conditions:
 - Editor side effects are explicit and independently tested.
 - `Editor.tsx` becomes a small composition/router component.
 
-### Phase 4 — Store migration (#31)
+### Phase 5 — Store migration (#31)
 
 As each use case moves, reduce store actions to presentation adapters. Separate
 persisted/application state from transient UI state, migrate broad subscribers,
@@ -122,7 +135,7 @@ Exit conditions:
 - Components subscribe to focused slices.
 - There is one authoritative representation of state.
 
-### Phase 5 — Presentation decomposition (#32)
+### Phase 6 — Presentation decomposition (#32)
 
 Decompose the app shell, character-template UI, combat UI, and remaining large
 screens along responsibility boundaries. Do this after their workflows have a
@@ -134,7 +147,7 @@ Exit conditions:
 - Containers orchestrate; presentational components use explicit props.
 - Accessibility and interaction behavior remain protected by tests.
 
-### Phase 6 — Domain consolidation and delivery (#33)
+### Phase 7 — Domain consolidation and delivery (#33)
 
 Consolidate types and invariants during each prior slice, then finish remaining
 domain cleanup. Analyze the bundle and lazy-load infrequent screens after stable
@@ -149,14 +162,14 @@ Exit conditions:
 ## Issue dependency map
 
 ```text
-#27 Guardrails
-  └─ #28 Ports + composition root
-       ├─ #26 Plugin use cases
-       │    └─ #29 Plugin lifecycle/runtime
-       └─ #30 Commands/editor
-             └─ #31 Store migration
-                   └─ #32 UI decomposition
-                         └─ #33 Domain finish + bundle work
+#26 Guardrails
+  └─ #27 Ports + composition root
+       └─ #28 Plugin use cases
+            └─ #29 Plugin lifecycle/runtime
+                 └─ #30 Commands/editor
+                      └─ #31 Store migration
+                           └─ #32 UI decomposition
+                                └─ #33 Domain finish + bundle work
 ```
 
 Some domain consolidation in #33 should happen inside earlier slices rather
