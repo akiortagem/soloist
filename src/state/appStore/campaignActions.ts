@@ -1,10 +1,41 @@
 import { createUniqueCharacterSheetNick } from "../../characterSheets/characterSheetLogic";
+import type { Application } from "../../app/composition/application";
 import { createRepositories } from "../../persistence/sessionRepository";
 import {
   getActiveSession,
   loadActiveSessionData,
 } from "./activeSessionData";
 import { setState, state } from "./stateCore";
+
+export function createSession(application: Application, name?: string) {
+  return createSessionWithState(application, name);
+}
+
+async function createSessionWithState(application: Application, name?: string) {
+  setState({ isCreatingSession: true, persistenceError: undefined });
+
+  try {
+    const { campaign: activeSession, campaigns: sessions } =
+      await application.createCampaign({ name });
+    setState({
+      sessions,
+      activeSessionId: activeSession.id,
+      activeSession,
+      route: "sessions",
+      persistenceMessage: `Created ${activeSession.name}.`,
+    });
+    await loadActiveSessionData(activeSession);
+    return activeSession;
+  } catch (error) {
+    setState({
+      persistenceError: error instanceof Error ? error.message : String(error),
+      persistenceMessage: "Session create failed.",
+    });
+    return null;
+  } finally {
+    setState({ isCreatingSession: false });
+  }
+}
 
 export const campaignActions = {
   async selectSession(sessionId: string) {
@@ -45,42 +76,6 @@ export const campaignActions = {
     });
 
     return activeDocument;
-  },
-
-  async createSession(name?: string) {
-    setState({
-      isCreatingSession: true,
-      persistenceError: undefined,
-    });
-
-    try {
-      const repositories = await createRepositories();
-      const createdSession = await repositories.sessions.create({
-        name: name?.trim() || "Untitled",
-      });
-      const sessions = await repositories.sessions.list();
-      const activeSession =
-        sessions.find((session) => session.id === createdSession.id) ??
-        createdSession;
-
-      setState({
-        sessions,
-        activeSessionId: activeSession.id,
-        activeSession,
-        route: "sessions",
-        persistenceMessage: `Created ${activeSession.name}.`,
-      });
-      await loadActiveSessionData(activeSession);
-      return activeSession;
-    } catch (error) {
-      setState({
-        persistenceError: error instanceof Error ? error.message : String(error),
-        persistenceMessage: "Session create failed.",
-      });
-      return null;
-    } finally {
-      setState({ isCreatingSession: false });
-    }
   },
 
   async renameSession(sessionId: string, name: string) {

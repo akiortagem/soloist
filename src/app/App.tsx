@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   ChevronDown,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { SettingsModal } from "./SettingsModal";
 import { PluginFeedback } from "./PluginFeedback";
+import type { Application } from "./composition/application";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
 import type { Document } from "../domain/domainTypes";
 import { CombatPanel } from "../combat/CombatPanel";
@@ -26,6 +26,7 @@ import {
   getOracleProvider,
 } from "../oracle/oracleRegistry";
 import { appStore, useAppStore } from "../state/appStore";
+import { createSession } from "../state/appStore/campaignActions";
 
 const navigationRoutes = [
   { key: "templates", label: "Templates" },
@@ -131,7 +132,7 @@ function DocumentMenu({
   );
 }
 
-export function App() {
+export function App({ application }: { application: Application }) {
   const {
     activeDocument,
     activeOracleProviderId,
@@ -476,8 +477,7 @@ export function App() {
                 aria-label="New campaign"
                 disabled={isCreatingSession}
                 onClick={async () => {
-                  const createdSession = await appStore.createSession("Untitled");
-
+                  const createdSession = await createSession(application, "Untitled");
                   if (createdSession) {
                     startCampaignRename(createdSession);
                   }

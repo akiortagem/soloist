@@ -14,7 +14,7 @@ import {
 import type { CharacterSheetRepository } from "../persistence/characterSheetRepository";
 import type { CombatRepository } from "../persistence/combatRepository";
 import type { DocumentRepository } from "../persistence/documentRepository";
-import { createId } from "../persistence/id";
+import { createId } from "../shared/infrastructure/systemValues";
 import type { SessionRepository } from "../persistence/sessionRepository";
 import type { SettingsRepository } from "../persistence/settingsRepository";
 

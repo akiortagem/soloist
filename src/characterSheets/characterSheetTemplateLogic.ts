@@ -7,7 +7,7 @@ import type {
   CharacterTemplateLayoutColumn,
   CharacterTemplateSeparator,
 } from "./characterSheetTypes";
-import { createId } from "../persistence/id";
+import { createId } from "../shared/infrastructure/systemValues";
 
 export const CHARACTER_TEMPLATE_FIELD_TYPES = [
   "number",
