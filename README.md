@@ -2,6 +2,15 @@
 
 Soloist is a local-first solo TRPG markdown writing app built with React, Vite, Tauri, and SQLite.
 
+## Architecture and contribution standards
+
+- [Architecture and directory guide](docs/architecture/README.md)
+- [Engineering practices](docs/architecture/engineering-practices.md)
+- [Clean Architecture refactor plan](docs/architecture/refactor-plan.md)
+
+New code should follow these standards. Existing code is being migrated one
+vertical feature slice at a time according to the refactor plan.
+
 ## Development
 
 Install dependencies:
