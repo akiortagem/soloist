@@ -4,7 +4,7 @@ import {
   coreSlashCommands,
   slashCommandRegistry,
   type SlashCommandDefinition,
-} from "../commands/slashCommandRegistry";
+} from "../features/commands";
 
 describe("slash command registry", () => {
   it("registers the core slash commands in menu order", () => {

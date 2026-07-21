@@ -1,7 +1,7 @@
 import {
   type SlashCommandDefinition,
   type SlashCommandRegistry,
-} from "../../../commands/slashCommandRegistry";
+} from "../../commands";
 import type { ScriptPluginRuntime } from "../../../plugins/scriptPluginRuntime";
 import { validateSlashCommandRegistration } from "../../../plugins/pluginValidation";
 import { ContributionTransaction } from "../application/ContributionTransaction";

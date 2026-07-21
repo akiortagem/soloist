@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAskCommandResultBlock } from "../commands/createCommandResultBlock";
+import { createAskCommandResultBlock } from "../features/commands";
 import type { OracleProvider } from "../oracle/OracleProvider";
 import {
   DEFAULT_ORACLE_PROVIDER_ID,
   getActiveOracleProvider,
   getOracleProvider,
   listOracleProviders,
+  oracleTableRegistry,
   registerOracleProvider,
   setActiveOracleProvider,
 } from "../oracle/oracleRegistry";
@@ -88,6 +89,13 @@ describe("oracle registry", () => {
         question: "Is the gate open?",
       },
       8,
+      {
+        id: (prefix) => `${prefix}-fixed`,
+        now: () => "2026-01-01T00:00:00.000Z",
+        random: () => 0,
+        activeOracle: () => getActiveOracleProvider(),
+        oracleTable: (id) => oracleTableRegistry.get(id),
+      },
     );
     const payload =
       block.payload && typeof block.payload === "object"

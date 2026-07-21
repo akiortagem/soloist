@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SlashCommandRegistry } from "../../../commands/slashCommandRegistry";
+import { SlashCommandRegistry } from "../../commands";
 import type { ScriptPluginRuntime } from "../../../plugins/scriptPluginRuntime";
 import { registerScriptCommands } from "./ScriptCommandRegistrar";
 

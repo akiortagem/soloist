@@ -20,7 +20,7 @@ import type { Application } from "./composition/application";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
 import type { Document } from "../domain/domainTypes";
 import { CombatPanel } from "../combat/CombatPanel";
-import { Editor } from "../editor/Editor";
+import { Editor } from "../features/editor";
 import {
   getActiveOracleProvider,
   getOracleProvider,
@@ -676,7 +676,7 @@ export function App({ application }: { application: Application }) {
           {route === "templates" ? (
             <CharacterSheetTemplatePanel />
           ) : (
-            <Editor />
+            <Editor adapter={application.editor} executeCommand={application.executeCommand} />
           )}
         </section>
 

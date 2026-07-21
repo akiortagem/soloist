@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCommand } from "../commands/parseCommand";
+import { parseCommand } from "../features/commands";
 import {
   extractCommandName,
   normalizeWhitespace,
@@ -7,8 +7,8 @@ import {
   startsWithSlash,
   tokenizeArgs,
   trimCommandInput,
-} from "../commands/parserUtils";
-import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
+} from "../features/commands";
+import { SlashCommandRegistry } from "../features/commands";
 
 describe("command parser foundation", () => {
   it("handles an empty string safely", () => {

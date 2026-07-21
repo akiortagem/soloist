@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { markdownToTiptapJson, tiptapJsonToMarkdown } from "../editor/markdown";
+import {
+  markdownToTiptapJson,
+  tiptapJsonToMarkdown,
+} from "../features/editor/infrastructure/markdown";
 
 describe("editor markdown persistence", () => {
   it("loads and saves headings, paragraphs, bold, italic, and bullet lists", () => {

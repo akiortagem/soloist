@@ -7,7 +7,8 @@ import type {
   ParsedPluginRandomTableCommand,
   ParsedRollCommand,
   ParsedStatCommand,
-} from "../commands/commandTypes";
+  CommandValues,
+} from "../features/commands";
 import {
   createAskCommandResultBlock,
   createChaosCommandResultBlock,
@@ -15,8 +16,17 @@ import {
   createPluginRandomTableCommandResultBlock,
   createRollCommandResultBlock,
   createStatCommandResultBlock,
-} from "../editor/resultBlocks/createResultBlock";
+} from "../features/commands";
 import { oracleTableRegistry } from "../oracle/oracleRegistry";
+import { getActiveOracleProvider } from "../oracle/oracleRegistry";
+
+const values: CommandValues = {
+  id: (prefix) => `${prefix}-fixed`,
+  now: () => "2026-01-01T00:00:00.000Z",
+  random: () => 0,
+  activeOracle: () => getActiveOracleProvider(),
+  oracleTable: (id) => oracleTableRegistry.get(id),
+};
 
 function payloadRecord(payload: unknown): Record<string, unknown> {
   return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
@@ -34,7 +44,7 @@ describe("command result blocks", () => {
       formula: "d20",
     };
 
-    const block = createRollCommandResultBlock(command);
+    const block = createRollCommandResultBlock(command, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("roll");
@@ -53,7 +63,7 @@ describe("command result blocks", () => {
       reason: "Missing dice formula",
     };
 
-    const block = createInvalidCommandResultBlock(command);
+    const block = createInvalidCommandResultBlock(command, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("error");
@@ -70,7 +80,7 @@ describe("command result blocks", () => {
       question: "Is the guard asleep?",
     };
 
-    const block = await createAskCommandResultBlock(command, 7);
+    const block = await createAskCommandResultBlock(command, 7, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("oracle");
@@ -98,7 +108,7 @@ describe("command result blocks", () => {
       delta: -4,
       beforeValue: 16,
       afterValue: 12,
-    });
+    }, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("stat");
@@ -122,7 +132,7 @@ describe("command result blocks", () => {
       delta: 1,
       beforeValue: 4,
       afterValue: 5,
-    });
+    }, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("chaos");
@@ -157,7 +167,7 @@ describe("command result blocks", () => {
       tableId: "soloist-plugin.test-omens:omens",
     };
 
-    const block = createPluginRandomTableCommandResultBlock(command);
+    const block = createPluginRandomTableCommandResultBlock(command, values);
     const payload = payloadRecord(block.payload);
     const entry = payloadRecord(payload.entry);
     const roll = payloadRecord(payload.roll);
@@ -182,7 +192,7 @@ describe("command result blocks", () => {
       tableId: "soloist-plugin.test-omens:missing",
     };
 
-    const block = createPluginRandomTableCommandResultBlock(command);
+    const block = createPluginRandomTableCommandResultBlock(command, values);
     const payload = payloadRecord(block.payload);
 
     expect(block.type).toBe("error");

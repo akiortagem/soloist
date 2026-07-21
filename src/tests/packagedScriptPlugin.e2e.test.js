@@ -3,12 +3,22 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CharacterSheetTemplateRegistry } from "../characterSheets/characterSheetTemplateRegistry";
-import { executeCommand } from "../commands/executeCommand";
-import { parseCommand } from "../commands/parseCommand";
-import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
+import {
+  createExecuteCommand,
+  StoreCommandEffects,
+} from "../features/commands";
+import { parseCommand, SlashCommandRegistry } from "../features/commands";
 import { OracleTableRegistry } from "../oracle/oracleRegistry";
 import { PluginManager } from "../plugins/pluginManager";
 import { WorkerScriptPluginRuntime } from "../plugins/scriptPluginRuntime";
+
+const executeCommand = createExecuteCommand({
+  effects: new StoreCommandEffects(),
+  values: {
+    id: (prefix) => `${prefix}_${crypto.randomUUID()}`,
+    now: () => new Date().toISOString(),
+  },
+});
 
 const fixtureRoot = resolve("test-fixtures/script-plugins");
 const originalWorker = globalThis.Worker;

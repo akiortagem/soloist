@@ -5,7 +5,7 @@ import {
 import {
   SlashCommandRegistry,
   slashCommandRegistry,
-} from "../commands/slashCommandRegistry";
+} from "../features/commands";
 import {
   OracleTableRegistry,
   oracleTableRegistry,

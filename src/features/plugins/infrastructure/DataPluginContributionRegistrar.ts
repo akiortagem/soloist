@@ -2,7 +2,7 @@ import type { CharacterSheetTemplateRegistry } from "../../../characterSheets/ch
 import type {
   SlashCommandDefinition,
   SlashCommandRegistry,
-} from "../../../commands/slashCommandRegistry";
+} from "../../commands";
 import type {
   OracleTableDefinition,
   OracleTableRegistry,

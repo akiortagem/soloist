@@ -1,10 +1,28 @@
 import { describe, expect, it } from "vitest";
 
 import { CharacterSheetTemplateRegistry } from "../characterSheets/characterSheetTemplateRegistry";
-import { executeCommand } from "../commands/executeCommand";
-import { parseCommand } from "../commands/parseCommand";
-import { SlashCommandRegistry } from "../commands/slashCommandRegistry";
-import { OracleTableRegistry } from "../oracle/oracleRegistry";
+import {
+  createExecuteCommand,
+  StoreCommandEffects,
+} from "../features/commands";
+import { parseCommand } from "../features/commands";
+
+const executeCommand = createExecuteCommand({
+  effects: new StoreCommandEffects(),
+  values: {
+    id: (prefix) => `${prefix}_${crypto.randomUUID()}`,
+    now: () => new Date().toISOString(),
+    random: () => Math.random(),
+    activeOracle: () => getActiveOracleProvider(),
+    oracleTable: (id) => oracleTableRegistry.get(id),
+  },
+});
+import { SlashCommandRegistry } from "../features/commands";
+import {
+  getActiveOracleProvider,
+  oracleTableRegistry,
+  OracleTableRegistry,
+} from "../oracle/oracleRegistry";
 import type {
   InstalledPluginRecord,
   PluginRepository,
