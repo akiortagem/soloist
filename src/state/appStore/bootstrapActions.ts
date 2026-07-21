@@ -4,8 +4,7 @@ import {
   setActiveOracleProvider,
 } from "../../oracle/oracleRegistry";
 import { createRepositories } from "../../persistence/sessionRepository";
-import { importCharacterSheetTemplatesFromPlugins } from "../../plugins/characterSheetTemplateImporter";
-import { PluginManager } from "../../plugins/pluginManager";
+import type { Application } from "../../app/composition/application";
 import {
   getActiveSession,
   loadActiveSessionData,
@@ -27,7 +26,7 @@ function parseActiveOracleProviderId(valueJson: string) {
 }
 
 export const bootstrapActions = {
-  async loadSessions() {
+  async loadSessions(application: Application) {
     setState({
       isLoadingSessions: true,
       persistenceError: undefined,
@@ -35,8 +34,7 @@ export const bootstrapActions = {
 
     try {
       const repositories = await createRepositories();
-      const pluginStatuses = await new PluginManager(repositories.plugins).reload();
-      await importCharacterSheetTemplatesFromPlugins(repositories);
+      const { statuses: pluginStatuses } = await application.reloadPlugins();
       await ensureOnboardingContent(repositories);
       const activeOracleProviderSetting = await repositories.settings.get(
         ACTIVE_ORACLE_PROVIDER_SETTING_KEY,

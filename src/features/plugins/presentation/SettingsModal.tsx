@@ -3,47 +3,31 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   FolderOpen,
-  Plug,
   RefreshCw,
   ToggleLeft,
   ToggleRight,
   Trash2,
   Upload,
-  X,
 } from "lucide-react";
-import { appStore, useAppStore } from "../state/appStore";
-import type { PluginManifest } from "../plugins/pluginTypes";
-import { SCRIPT_PLUGIN_TRUST_WARNING } from "../plugins/scriptPluginSecurity";
+import type { Application } from "../../../app/composition/application";
+import type { PluginManifest } from "../../../plugins/pluginTypes";
+import { SCRIPT_PLUGIN_TRUST_WARNING } from "../../../plugins/scriptPluginSecurity";
+import { appStore, useAppStore } from "../../../state/appStore";
+import {
+  createPluginTypeText,
+  isCharacterSheetTemplateManifest,
+  type PluginPackageInstallResult,
+} from "./pluginSettingsModel";
+import { SettingsHeader, SettingsNavigation } from "./SettingsModalParts";
 
-type SettingsSection = "plugins";
-
-type PluginPackageInstallResult = {
-  folderName: string;
-  installedPath: string;
-  manifestText: string;
-};
-
-function isCharacterSheetTemplateManifest(manifest: PluginManifest) {
-  return (
-    manifest.type === "data" &&
-    (manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0
-  );
-}
-
-function createPluginTypeText(plugin: {
-  typeLabel: string;
-  contributionLabels: string[];
-}) {
-  return [plugin.typeLabel, ...plugin.contributionLabels].join(" · ");
-}
-
-export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { persistenceError, persistenceMessage, pluginStatuses } = useAppStore();
-  const [activeSection, setActiveSection] = useState<SettingsSection>("plugins");
+type SettingsModalProps = { application: Application; onClose: () => void };
+export function SettingsModal(props: SettingsModalProps) {
+  const { application, onClose } = props;
+  const { persistenceError, persistenceMessage, pluginStatuses } =
+    useAppStore();
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
   const [updatingPluginId, setUpdatingPluginId] = useState<string | null>(null);
-
   async function installPluginFromPackage() {
     setIsInstalling(true);
     setInstallError(null);
@@ -72,13 +56,15 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       );
       const manifest = JSON.parse(result.manifestText) as PluginManifest;
       const isTemplatePlugin = isCharacterSheetTemplateManifest(manifest);
-      await appStore.installPluginManifest(manifest, {
+      await appStore.installPluginManifest(application, manifest, {
         disableAfterInstall: !isTemplatePlugin,
         enableAfterInstall: isTemplatePlugin,
       });
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin package could not be installed.",
+        error instanceof Error
+          ? error.message
+          : "Plugin package could not be installed.",
       );
     } finally {
       setIsInstalling(false);
@@ -92,7 +78,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       await invoke<string>("open_plugin_directory");
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin directory could not be opened.",
+        error instanceof Error
+          ? error.message
+          : "Plugin directory could not be opened.",
       );
     }
   }
@@ -106,7 +94,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     if (
       enabled &&
       pluginType === "script" &&
-      !window.confirm(`Enable script plugin "${pluginName}"?\n\n${SCRIPT_PLUGIN_TRUST_WARNING}`)
+      !window.confirm(
+        `Enable script plugin "${pluginName}"?\n\n${SCRIPT_PLUGIN_TRUST_WARNING}`,
+      )
     ) {
       return;
     }
@@ -115,10 +105,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setInstallError(null);
 
     try {
-      await appStore.setPluginEnabled(pluginId, enabled);
+      await appStore.setPluginEnabled(application, pluginId, enabled);
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin setting could not be updated.",
+        error instanceof Error
+          ? error.message
+          : "Plugin setting could not be updated.",
       );
     } finally {
       setUpdatingPluginId(null);
@@ -130,10 +122,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setInstallError(null);
 
     try {
-      await appStore.reinstallPluginTemplates(pluginId);
+      await appStore.reinstallPluginTemplates(application, pluginId);
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin templates could not be reinstalled.",
+        error instanceof Error
+          ? error.message
+          : "Plugin templates could not be reinstalled.",
       );
     } finally {
       setUpdatingPluginId(null);
@@ -149,10 +143,12 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setInstallError(null);
 
     try {
-      await appStore.uninstallPlugin(pluginId);
+      await appStore.uninstallPlugin(application, pluginId);
     } catch (error) {
       setInstallError(
-        error instanceof Error ? error.message : "Plugin could not be uninstalled.",
+        error instanceof Error
+          ? error.message
+          : "Plugin could not be uninstalled.",
       );
     } finally {
       setUpdatingPluginId(null);
@@ -167,35 +163,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       role="dialog"
     >
       <div className="settings-modal">
-        <aside className="settings-modal-nav" aria-label="Settings sections">
-          <div>
-            <h2>Settings</h2>
-            <button
-              className={activeSection === "plugins" ? "active" : ""}
-              onClick={() => setActiveSection("plugins")}
-              type="button"
-            >
-              <Plug aria-hidden="true" />
-              Plugins
-            </button>
-          </div>
-        </aside>
+        <SettingsNavigation />
 
         <section className="settings-modal-content">
-          <div className="settings-modal-header">
-            <div>
-              <p>Plugin Settings</p>
-              <h3>Plugins</h3>
-            </div>
-            <button
-              aria-label="Close settings"
-              onClick={onClose}
-              title="Close settings"
-              type="button"
-            >
-              <X aria-hidden="true" />
-            </button>
-          </div>
+          <SettingsHeader onClose={onClose} />
 
           <div className="settings-panel">
             <div className="settings-panel-heading">
@@ -224,7 +195,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             ) : (
               <div className="plugin-settings-list">
                 {pluginStatuses.map((plugin) => (
-                  <article className="plugin-settings-item" key={plugin.pluginId}>
+                  <article
+                    className="plugin-settings-item"
+                    key={plugin.pluginId}
+                  >
                     <div>
                       <h4>{plugin.name}</h4>
                       <p>
@@ -238,7 +212,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                             script-loading, and worker access.
                           </p>
                           <p>
-                            Soloist API permissions: {plugin.permissions.length > 0
+                            Soloist API permissions:{" "}
+                            {plugin.permissions.length > 0
                               ? plugin.permissions.join(", ")
                               : "none"}
                           </p>
@@ -273,7 +248,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                               !plugin.enabled,
                             )
                           }
-                          title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
+                          title={
+                            plugin.enabled ? "Disable plugin" : "Enable plugin"
+                          }
                           type="button"
                         >
                           {plugin.enabled ? (
@@ -305,7 +282,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <p className="settings-status">{persistenceMessage}</p>
             ) : null}
             {installError || persistenceError ? (
-              <p className="settings-error">{installError ?? persistenceError}</p>
+              <p className="settings-error">
+                {installError ?? persistenceError}
+              </p>
             ) : null}
           </div>
         </section>

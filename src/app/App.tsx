@@ -14,7 +14,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { SettingsModal } from "./SettingsModal";
+import { SettingsModal } from "../features/plugins/presentation/SettingsModal";
 import { PluginFeedback } from "./PluginFeedback";
 import type { Application } from "./composition/application";
 import { CharacterSheetTemplatePanel } from "../characterSheets/CharacterSheetTemplatePanel";
@@ -28,9 +28,7 @@ import {
 import { appStore, useAppStore } from "../state/appStore";
 import { createSession } from "../state/appStore/campaignActions";
 
-const navigationRoutes = [
-  { key: "templates", label: "Templates" },
-] as const;
+const navigationRoutes = [{ key: "templates", label: "Templates" }] as const;
 
 const LEFT_PANEL_MIN_WIDTH = 240;
 const LEFT_PANEL_MAX_WIDTH = LEFT_PANEL_MIN_WIDTH * 2;
@@ -157,6 +155,7 @@ export function App({ application }: { application: Application }) {
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [campaignNameDraft, setCampaignNameDraft] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const closeSettings = () => setIsSettingsOpen(false);
   const stopLeftPanelResizeRef = useRef<(() => void) | null>(null);
   const stopRightPanelResizeRef = useRef<(() => void) | null>(null);
   const [collapsedCampaignIds, setCollapsedCampaignIds] = useState<Set<string>>(
@@ -167,8 +166,8 @@ export function App({ application }: { application: Application }) {
   );
 
   useEffect(() => {
-    void appStore.loadSessions();
-  }, []);
+    void appStore.loadSessions(application);
+  }, [application]);
 
   useEffect(() => {
     if (rightPanelOpenRequest > 0) {
@@ -752,7 +751,7 @@ export function App({ application }: { application: Application }) {
         ) : null}
       </div>
       {isSettingsOpen ? (
-        <SettingsModal onClose={() => setIsSettingsOpen(false)} />
+        <SettingsModal application={application} onClose={closeSettings} />
       ) : null}
     </main>
   );

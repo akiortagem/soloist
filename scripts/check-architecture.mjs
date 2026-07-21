@@ -80,6 +80,17 @@ for (const file of await files(featuresRoot)) {
     if (layer === "domain" && /^(react|@tauri-apps)(\/|$)/.test(specifier)) {
       violations.push(`${relative(root, file)}: domain imports '${specifier}'`);
     }
+    if (
+      layer === "application" &&
+      (/^(react|@tauri-apps)(\/|$)/.test(specifier) ||
+        /(?:^|\/)state\/appStore(?:\/|$)/.test(specifier) ||
+        /(?:^|\/)plugins\/pluginManager(?:\.|$)/.test(specifier) ||
+        /(?:^|\/)persistence(?:\/|$)/.test(specifier))
+    ) {
+      violations.push(
+        `${relative(root, file)}: application imports concrete boundary '${specifier}'`,
+      );
+    }
     if (targetLayer && forbiddenLayerImports[layer].has(targetLayer)) {
       violations.push(
         `${relative(root, file)}: ${layer} imports ${targetLayer} '${specifier}'`,

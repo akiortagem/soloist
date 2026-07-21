@@ -4,7 +4,7 @@ import { chaosActions } from "./chaosActions";
 import { characterSheetActions } from "./characterSheetActions";
 import { combatActions } from "./combatActions";
 import { getSnapshot, subscribe } from "./stateCore";
-import { pluginActions } from "./pluginActions";
+import { pluginActions } from "../../features/plugins/presentation/pluginActions";
 import { templateActions } from "./templateActions";
 import { uiActions } from "./uiActions";
 

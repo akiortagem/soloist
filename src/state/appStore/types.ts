@@ -5,7 +5,7 @@ import type {
   Document,
   Session,
 } from "../../domain/domainTypes";
-import type { PluginManagerStatus } from "../../plugins/pluginManager";
+import type { PluginStatus } from "../../features/plugins";
 
 export type AppRoute =
   | "sessions"
@@ -54,7 +54,7 @@ export type OracleState = {
 };
 
 export type PluginState = {
-  pluginStatuses: PluginManagerStatus[];
+  pluginStatuses: PluginStatus[];
 };
 
 export type PersistenceState = {
