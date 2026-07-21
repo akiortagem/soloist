@@ -10,9 +10,6 @@
   "src/editor/markdown.ts": 686,
   "src/onboarding/onboardingContent.ts": 318,
   "src/persistence/characterSheetRepository.ts": 306,
-  "src/plugins/pluginManager.ts": 424,
-  "src/plugins/pluginTypes.ts": 883,
-  "src/plugins/scriptPluginRuntime.ts": 977,
   "src/state/appStore/campaignActions.ts": 429,
   "src/state/appStore/characterSheetActions.ts": 456,
   "src/state/appStore/combatActions.ts": 399

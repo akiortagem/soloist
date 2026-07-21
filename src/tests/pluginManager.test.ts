@@ -217,6 +217,46 @@ describe("PluginManager", () => {
     ).toMatchObject({ id: "edge", name: "Edge" });
   });
 
+  it("rolls back every data contribution after partial activation fails", async () => {
+    const manifest: PluginManifest = {
+      ...validManifest,
+      id: "soloist-plugin.partial",
+      contributes: {
+        slashCommands: [
+          {
+            id: "started",
+            name: "started",
+            label: "Started",
+            prefix: "/started",
+            commandText: "/roll 1d6",
+          },
+        ],
+        oracleTables: [
+          {
+            id: "duplicate",
+            name: "First",
+            dice: "1d6",
+            entries: [{ id: "one", min: 1, max: 6, text: "First" }],
+          },
+          {
+            id: "duplicate",
+            name: "Second",
+            dice: "1d6",
+            entries: [{ id: "two", min: 1, max: 6, text: "Second" }],
+          },
+        ],
+        characterSheetTemplates: validManifest.contributes
+          ?.characterSheetTemplates,
+      },
+    };
+    const { manager, registries } = createManager([createPlugin(manifest)]);
+
+    await expect(manager.reload()).resolves.toMatchObject([{ status: "error" }]);
+    expect(registries.slashCommands.list()).toEqual([]);
+    expect(registries.oracleTables.list()).toEqual([]);
+    expect(registries.characterSheetTemplates.list()).toEqual([]);
+  });
+
   it("removes disabled plugin contributions after reload", async () => {
     const { manager, repository, registries } = createManager([
       createPlugin(validManifest),

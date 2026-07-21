@@ -2,16 +2,13 @@ import {
   CharacterSheetTemplateRegistry,
   characterSheetTemplateRegistry,
 } from "../characterSheets/characterSheetTemplateRegistry";
-import { invoke } from "@tauri-apps/api/core";
 import {
   SlashCommandRegistry,
   slashCommandRegistry,
-  type SlashCommandDefinition,
 } from "../commands/slashCommandRegistry";
 import {
   OracleTableRegistry,
   oracleTableRegistry,
-  type OracleTableDefinition,
 } from "../oracle/oracleRegistry";
 import type {
   InstalledPluginRecord,
@@ -25,36 +22,23 @@ import {
   type ScriptPluginRuntime,
   WorkerScriptPluginRuntime,
 } from "./scriptPluginRuntime";
-import { validateSlashCommandRegistration } from "./pluginValidation";
-import { pluginUiRegistry } from "./pluginUiRegistry";
-import { unregisterPluginOracleProviders } from "../oracle/oracleRegistry";
+import type { PluginContributionCleanup } from "../features/plugins/application/ports/PluginContributionCleanup";
+import { registerScriptCommands } from "../features/plugins/infrastructure/ScriptCommandRegistrar";
+import { registerDataPluginContributions } from "../features/plugins/infrastructure/DataPluginContributionRegistrar";
+import {
+  clonePluginManagerStatus,
+  createPluginManagerStatus,
+  EMPTY_CONTRIBUTION_COUNTS,
+  type PluginContributionCounts,
+  type PluginManagerStatus,
+  type PluginManagerStatusKind,
+} from "../features/plugins/domain/PluginManagerStatus";
 
-export type PluginManagerStatusKind =
-  | "loaded"
-  | "disabled"
-  | "invalid"
-  | "error";
-
-export type PluginContributionCounts = {
-  slashCommands: number;
-  oracleTables: number;
-  characterSheetTemplates: number;
-};
-
-export type PluginManagerStatus = {
-  pluginId: string;
-  name: string;
-  version: string;
-  enabled: boolean;
-  pluginType: InstalledPluginRecord["type"];
-  typeLabel: string;
-  contributionLabels: string[];
-  isCharacterSheetTemplatePlugin: boolean;
-  status: PluginManagerStatusKind;
-  contributions: PluginContributionCounts;
-  errors: PluginManifestValidationError[];
-  permissions: string[];
-};
+export type {
+  PluginContributionCounts,
+  PluginManagerStatus,
+  PluginManagerStatusKind,
+} from "../features/plugins/domain/PluginManagerStatus";
 
 export type PluginManagerRegistries = {
   slashCommands: SlashCommandRegistry;
@@ -71,12 +55,7 @@ export type PluginManagerOptions = {
   registries?: PluginManagerRegistries;
   scriptRuntime?: ScriptPluginRuntime;
   readPluginEntry?: PluginEntryReader;
-};
-
-const EMPTY_COUNTS: PluginContributionCounts = {
-  slashCommands: 0,
-  oracleTables: 0,
-  characterSheetTemplates: 0,
+  cleanup?: PluginContributionCleanup;
 };
 
 export class PluginManager {
@@ -85,6 +64,7 @@ export class PluginManager {
   private readonly registries: PluginManagerRegistries;
   private readonly scriptRuntime: ScriptPluginRuntime;
   private readonly readPluginEntry: PluginEntryReader;
+  private readonly cleanup: PluginContributionCleanup;
 
   constructor(
     private readonly pluginRepository: PluginRepository,
@@ -102,6 +82,7 @@ export class PluginManager {
     this.scriptRuntime =
       options.scriptRuntime ?? new WorkerScriptPluginRuntime(pluginRepository);
     this.readPluginEntry = options.readPluginEntry ?? readInstalledPluginEntry;
+    this.cleanup = options.cleanup ?? { unregister() {} };
   }
 
   async reload(): Promise<PluginManagerStatus[]> {
@@ -119,12 +100,12 @@ export class PluginManager {
   }
 
   getStatuses(): PluginManagerStatus[] {
-    return Array.from(this.statuses.values(), cloneStatus);
+    return Array.from(this.statuses.values(), clonePluginManagerStatus);
   }
 
   getStatus(pluginId: string): PluginManagerStatus | undefined {
     const status = this.statuses.get(pluginId);
-    return status ? cloneStatus(status) : undefined;
+    return status ? clonePluginManagerStatus(status) : undefined;
   }
 
   private async clearPluginContributions(plugins: InstalledPluginRecord[]): Promise<void> {
@@ -134,8 +115,7 @@ export class PluginManager {
     ]);
 
     for (const pluginId of pluginIds) {
-      pluginUiRegistry.unregisterPlugin(pluginId);
-      unregisterPluginOracleProviders(pluginId);
+      this.cleanup.unregister(pluginId);
       this.registries.slashCommands.unregisterPlugin(pluginId);
       this.registries.oracleTables.unregisterPlugin(pluginId);
       this.registries.characterSheetTemplates.unregisterPlugin(pluginId);
@@ -160,12 +140,11 @@ export class PluginManager {
       const counts =
         plugin.type === "script"
           ? await this.applyScriptPluginContributions(plugin)
-          : this.applyDataPluginContributions(plugin);
+          : registerDataPluginContributions(plugin, this.registries);
       this.loadedPluginIds.add(plugin.id);
       return this.createStatus(plugin, "loaded", [], counts);
     } catch (error) {
-      pluginUiRegistry.unregisterPlugin(plugin.id);
-      unregisterPluginOracleProviders(plugin.id);
+      this.cleanup.unregister(plugin.id);
       await this.scriptRuntime.deactivatePlugin(plugin.id);
       this.registries.slashCommands.unregisterPlugin(plugin.id);
       this.registries.oracleTables.unregisterPlugin(plugin.id);
@@ -181,73 +160,10 @@ export class PluginManager {
     }
   }
 
-  private applyDataPluginContributions(
-    plugin: InstalledPluginRecord,
-  ): PluginContributionCounts {
-    const contributions = plugin.manifest.contributes;
-    const counts: PluginContributionCounts = { ...EMPTY_COUNTS };
-
-    for (const contribution of contributions?.slashCommands ?? []) {
-      const tableId = contribution.tableId
-        ? createContributionId(plugin.id, contribution.tableId)
-        : undefined;
-
-      this.registries.slashCommands.register({
-        id: createContributionId(plugin.id, contribution.id),
-        name: contribution.name,
-        label: contribution.label,
-        description: contribution.description,
-        prefix: contribution.prefix,
-        commandText: contribution.commandText,
-        source: "plugin",
-        pluginId: plugin.id,
-        tableId,
-        parse: tableId
-          ? ({ raw, commandName }) => ({
-              type: "pluginRandomTable",
-              raw,
-              commandName,
-              pluginId: plugin.id,
-              tableId,
-            })
-          : undefined,
-      } satisfies SlashCommandDefinition);
-      counts.slashCommands += 1;
-    }
-
-    for (const contribution of [
-      ...(contributions?.randomTables ?? []),
-      ...(contributions?.oracleTables ?? []),
-    ]) {
-      this.registries.oracleTables.register({
-        ...contribution,
-        id: createContributionId(plugin.id, contribution.id),
-        contributionId: contribution.id,
-        source: "plugin",
-        pluginId: plugin.id,
-      } satisfies OracleTableDefinition);
-      counts.oracleTables += 1;
-    }
-
-    for (const contribution of contributions?.characterSheetTemplates ?? []) {
-      this.registries.characterSheetTemplates.register({
-        id: createContributionId(plugin.id, contribution.id),
-        name: contribution.name,
-        fields: contribution.fields,
-        contributionId: contribution.id,
-        source: "plugin",
-        pluginId: plugin.id,
-      });
-      counts.characterSheetTemplates += 1;
-    }
-
-    return counts;
-  }
-
   private async applyScriptPluginContributions(
     plugin: InstalledPluginRecord,
   ): Promise<PluginContributionCounts> {
-    const counts: PluginContributionCounts = { ...EMPTY_COUNTS };
+    const counts: PluginContributionCounts = { ...EMPTY_CONTRIBUTION_COUNTS };
     const entry = plugin.manifest.entry;
 
     if (!entry) {
@@ -265,42 +181,12 @@ export class PluginManager {
       onRuntimeError: (message) => this.setRuntimeErrorStatus(plugin, message),
     });
 
-    const commandIds = new Set<string>();
-    const commandNames = new Set<string>();
-    for (const rawCommand of activation.slashCommands as unknown[]) {
-      const command = validateSlashCommandRegistration(rawCommand);
-      if (commandIds.has(command.id)) {
-        throw new Error(`Duplicate slash command id: ${command.id}`);
-      }
-      const normalizedName = command.name.toLowerCase();
-      if (commandNames.has(normalizedName)) {
-        throw new Error(`Duplicate slash command name: ${command.name}`);
-      }
-      commandIds.add(command.id);
-      commandNames.add(normalizedName);
-      this.registries.slashCommands.register({
-        id: createContributionId(plugin.id, command.id),
-        name: command.name,
-        label: command.label,
-        description: command.description,
-        prefix: command.prefix,
-        source: "plugin",
-        pluginId: plugin.id,
-        parse: ({ raw, commandName, argsText }) => ({
-          type: "scriptPlugin",
-          raw,
-          commandName,
-          pluginId: plugin.id,
-          commandId: command.id,
-          argsText,
-          args: splitCommandArgs(argsText),
-          execute: (context) =>
-            this.scriptRuntime.executeCommand(plugin.id, command.id, context),
-        }),
-      } satisfies SlashCommandDefinition);
-      counts.slashCommands += 1;
-    }
-
+    counts.slashCommands = await registerScriptCommands({
+      pluginId: plugin.id,
+      commands: activation.slashCommands as unknown[],
+      registry: this.registries.slashCommands,
+      runtime: this.scriptRuntime,
+    });
     return counts;
   }
 
@@ -316,8 +202,7 @@ export class PluginManager {
     };
 
     this.registries.slashCommands.unregisterPlugin(plugin.id);
-    pluginUiRegistry.unregisterPlugin(plugin.id);
-    unregisterPluginOracleProviders(plugin.id);
+    this.cleanup.unregister(plugin.id);
     this.registries.oracleTables.unregisterPlugin(plugin.id);
     this.registries.characterSheetTemplates.unregisterPlugin(plugin.id);
     void this.scriptRuntime.deactivatePlugin(plugin.id);
@@ -329,7 +214,7 @@ export class PluginManager {
         plugin,
         "error",
         [...(current?.errors ?? []), error],
-        current?.contributions ?? EMPTY_COUNTS,
+        current?.contributions ?? EMPTY_CONTRIBUTION_COUNTS,
       ),
     );
   }
@@ -338,39 +223,19 @@ export class PluginManager {
     plugin: InstalledPluginRecord,
     status: PluginManagerStatusKind,
     errors: PluginManifestValidationError[] = [],
-    contributions: PluginContributionCounts = EMPTY_COUNTS,
+    contributions: PluginContributionCounts = EMPTY_CONTRIBUTION_COUNTS,
   ): PluginManagerStatus {
-    return {
-      pluginId: plugin.id,
-      name: plugin.name,
-      version: plugin.version,
-      enabled: plugin.enabled,
-      pluginType: plugin.type,
-      typeLabel: createPluginTypeLabel(plugin),
-      contributionLabels: createPluginContributionLabels(plugin),
-      isCharacterSheetTemplatePlugin: isCharacterSheetTemplatePlugin(plugin),
-      status,
-      contributions: { ...contributions },
-      errors: errors.map((error) => ({ ...error })),
-      permissions: [...(plugin.manifest.permissions ?? [])],
-    };
+    return createPluginManagerStatus(plugin, status, errors, contributions);
   }
-}
-
-function createContributionId(pluginId: string, contributionId: string) {
-  return `${pluginId}:${contributionId}`;
 }
 
 async function readInstalledPluginEntry(input: {
   pluginId: string;
   entry: string;
-}) {
-  return invoke<string>("read_plugin_entry", input);
-}
-
-function splitCommandArgs(argsText: string) {
-  const trimmed = argsText.trim();
-  return trimmed.length === 0 ? [] : trimmed.split(/\s+/);
+}): Promise<string> {
+  throw new Error(
+    `Plugin entry reader is not configured for ${input.pluginId}:${input.entry}`,
+  );
 }
 
 function isPluginManagerRegistries(
@@ -381,44 +246,4 @@ function isPluginManagerRegistries(
     "oracleTables" in value &&
     "characterSheetTemplates" in value
   );
-}
-
-function createPluginTypeLabel(plugin: InstalledPluginRecord) {
-  return plugin.type === "data" ? "Data" : "Script";
-}
-
-function createPluginContributionLabels(plugin: InstalledPluginRecord) {
-  const contributions = plugin.manifest.contributes;
-  const labels: string[] = [];
-
-  if ((contributions?.characterSheetTemplates?.length ?? 0) > 0) {
-    labels.push("Character sheet template");
-  }
-
-  if ((contributions?.slashCommands?.length ?? 0) > 0) {
-    labels.push("Slash command");
-  }
-
-  if (
-    (contributions?.randomTables?.length ?? 0) > 0 ||
-    (contributions?.oracleTables?.length ?? 0) > 0
-  ) {
-    labels.push("Oracle table");
-  }
-
-  return labels;
-}
-
-function isCharacterSheetTemplatePlugin(plugin: InstalledPluginRecord) {
-  return (plugin.manifest.contributes?.characterSheetTemplates?.length ?? 0) > 0;
-}
-
-function cloneStatus(status: PluginManagerStatus): PluginManagerStatus {
-  return {
-    ...status,
-    contributionLabels: [...status.contributionLabels],
-    contributions: { ...status.contributions },
-    errors: status.errors.map((error) => ({ ...error })),
-    permissions: [...status.permissions],
-  };
 }

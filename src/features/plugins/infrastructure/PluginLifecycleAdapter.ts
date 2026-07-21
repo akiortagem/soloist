@@ -1,17 +1,18 @@
-import { unregisterPluginOracleProviders } from "../../../oracle/oracleRegistry";
 import type { PluginManager } from "../../../plugins/pluginManager";
-import { pluginUiRegistry } from "../../../plugins/pluginUiRegistry";
 import type { PluginLifecycle } from "../application/ports/PluginPorts";
+import type { PluginContributionCleanup } from "../application/ports/PluginContributionCleanup";
 
 export class PluginLifecycleAdapter implements PluginLifecycle {
-  constructor(private readonly manager: PluginManager) {}
+  constructor(
+    private readonly manager: PluginManager,
+    private readonly cleanup: PluginContributionCleanup,
+  ) {}
 
   reload() {
     return this.manager.reload();
   }
 
   unregister(pluginId: string) {
-    pluginUiRegistry.unregisterPlugin(pluginId);
-    unregisterPluginOracleProviders(pluginId);
+    this.cleanup.unregister(pluginId);
   }
 }

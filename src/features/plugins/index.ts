@@ -12,6 +12,8 @@ export { PluginLifecycleAdapter } from "./infrastructure/PluginLifecycleAdapter"
 export { PluginTemplateAdapter } from "./infrastructure/PluginTemplateAdapter";
 export { SqlitePluginRepository } from "./infrastructure/SqlitePluginRepository";
 export { TauriPluginFiles } from "./infrastructure/TauriPluginFiles";
+export { readTauriPluginEntry } from "./infrastructure/TauriPluginEntryReader";
+export { GlobalPluginContributionCleanup } from "./infrastructure/GlobalPluginContributionCleanup";
 export {
   pluginErrorText,
   pluginFailureMessage,

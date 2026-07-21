@@ -12,6 +12,8 @@ import {
   PluginTemplateAdapter,
   SqlitePluginRepository,
   TauriPluginFiles,
+  readTauriPluginEntry,
+  GlobalPluginContributionCleanup,
 } from "../../features/plugins";
 import { CharacterSheetRepository } from "../../persistence/characterSheetRepository";
 import { PluginRepository } from "../../persistence/pluginRepository";
@@ -38,8 +40,12 @@ export async function createApplication(): Promise<Application> {
     characterSheets: new CharacterSheetRepository(database),
     plugins: new PluginRepository(database),
   };
-  const manager = new PluginManager(repositories.plugins);
-  const lifecycle = new PluginLifecycleAdapter(manager);
+  const cleanup = new GlobalPluginContributionCleanup();
+  const manager = new PluginManager(repositories.plugins, {
+    readPluginEntry: readTauriPluginEntry,
+    cleanup,
+  });
+  const lifecycle = new PluginLifecycleAdapter(manager, cleanup);
   const templates = new PluginTemplateAdapter(repositories);
   const plugins = new SqlitePluginRepository(repositories.plugins);
   const reloadPlugins = createReloadPlugins({ lifecycle, templates });
